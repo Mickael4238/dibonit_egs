@@ -1,41 +1,335 @@
-# dibonit_egs
-Dibonit Entreprise Global Softwares (EGS) is a RUST workspace where we can find various entreprise services, applications and common librairies (as listed in the Cargo.toml)
+# Dibonit EGS
 
-It allows custom application or services to interract with existing entpreprise systems.
-It brings security, cleanness, readability, efficiency, well defined perimeters of all entreprise applications.
+**Dibonit Entreprise Global Softwares (EGS)** is a Rust workspace containing enterprise services, applications, and common libraries designed for seamless interoperability within a manufacturing and business ecosystem.
 
-It focus on easy deployment and maintenance.
+## Vision
 
-# Core : Dibonit ESB
-This Entreprise Service bus will handle every communication between the entreprise applications and services.
-It contains a librairy d_esb_lib and a service d_esb_srv (who itslef use the d_esb_lib).
-Each servers (or dockers) will contains an instance of the dibonit_esb service.
-Each entpreprise applications and service will be connected to this service thanks to the d_esb_lib. (nor natively if application is in rust, or via a provided service connector).
+Dibonit EGS provides a **secure, clean, readable, and efficient** architecture for enterprise applications with:
 
-# APPS and services
-All entreprise apps can be connected to the Dibonit ESB either ia the esb library (for internal rust apps) nor the esb connector (other apps)
-The application can be organized according to entreprise "blocks" (manufacturing, production, it services...) each of them only publishing/receiving data to/from ESB.
-The software entreprise architech will organize "contracts" between applications and esb. The esb will be configured to map each applications messages according to contracts.
-ERP -> contract 1 : GET_CUSTOMER_PROCUCT_ORDER (customerID) return the product ordered by customer. The ESB must then be able to answer that ESB request.
-MES -> contract 1 : ASK_CUSTOMER_PROCUCT_ORDER (customerID) a message that is allowed to send by the MES.
+- **Well-defined perimeters** for each application and service
+- **Easy deployment and maintenance** across environments
+- **Centralized communication** via the Dibonit Enterprise Service Bus (ESB)
+- **Modular design** allowing custom applications to integrate with existing enterprise systems
 
-# Versions
+---
 
+## Architecture Overview
 
-# Git
-main
-    new release should branch from it.
-    can be deployed to production environement
-dev
-    new feature should branch from it.
-feat_x.y.z_<desc> 
-    new wip (work in progess) should branch from it
-    can be deployed to dev environment for testing.
-    should be merge to rel_x.y when the integration test on the dev environement are validated.
-wip_x.y.z.m_<desc> 
-    should be merge to feat_x.y.z when a complete stage of the feature is acomplished and the unit tests are validated.
-rel_x.y_<desc>
-    can be deployed to qualification environment for testing with users and interacting with other production apps.
-    should be merge to dev when user acceptance is validated in qualif.
-    should be merge to main when no related errors are found in qualif for a certain time (pilote)
-    
+### Core Component: Dibonit Enterprise Service Bus (ESB)
+
+The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication between enterprise applications and services.
+
+#### ESB Components
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `d_esb_lib` | Library | Rust library used by internal applications to connect to the ESB |
+| `d_esb_srv` | Service | Runs on each server or Docker container, managing local communication and routing to remote ESB instances |
+| `d_con_srv` | Service | Connector service enabling external applications (non-Rust) to integrate with the ESB |
+
+#### Supported Connector Protocols
+
+- SECS (Semiconductor Equipment Communication Standard)
+- MODBUS (Industrial communication protocol)
+- TCP (Raw socket communication)
+- Web Services (SOAP, REST)
+- APIs (HTTP/HTTPS endpoints)
+
+#### Communication Flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   ERP System    │────▶│   ESB Service   │────▶│   MES System    │
+│ (d_erp_app)     │◀────│ (d_esb_srv)     │◀────│ (dibonit_mes)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                                      ▲
+                                      │
+                    ┌─────────────────┐
+                    │ External App     │
+                    │ (via d_con_srv)  │
+                    └─────────────────┘
+```
+
+### Application Organization
+
+Applications are organized into **enterprise blocks**, each representing a functional domain:
+
+- **IT Services**: Infrastructure, tools, and utilities
+- **Manufacturing**: Production systems and MES
+- **Shop Floors**: Automation, facilities, and production lines
+- **Process**: Production flows and line management
+- **ERP**: Enterprise Resource Planning
+- **Messaging**: User communication and object linking
+- **Drive**: Document and file management
+
+Each block publishes and receives data **exclusively through the ESB**, ensuring loose coupling and clear contract boundaries.
+
+### Contracts
+
+Contracts define the message exchange agreements between applications and the ESB. Each contract specifies:
+
+- **Message type**: Request, response, event, command
+- **Payload structure**: Data format and validation rules
+- **Permissions**: Which applications can send/receive each message type
+- **Routing rules**: How messages are directed between applications
+
+#### Example Contract
+
+**Contract: `GET_CUSTOMER_PRODUCT_ORDER`**
+- **Publisher**: ERP System
+- **Subscribers**: MES, Automation Systems
+- **Request**: `{ customer_id: String }`
+- **Response**: `{ customer_id: String, products: Vec<ProductOrder> }`
+- **Description**: Retrieves all products ordered by a specific customer
+
+**Contract: `ASK_CUSTOMER_PRODUCT_ORDER`**
+- **Publisher**: MES System
+- **Subscribers**: ESB (for validation and routing)
+- **Payload**: `{ customer_id: String }`
+- **Description**: MES requests product order information for a customer
+
+---
+
+## Workspace Structure
+
+```
+dibonit_egs/
+├── Cargo.toml                    # Workspace root configuration
+├── README.md                     # This document
+├── it/                           # IT Services block
+│   ├── dibonit_esb/              # Enterprise Service Bus
+│   │   ├── d_esb_lib/            # ESB Rust library
+│   │   ├── d_esb_srv/            # ESB service
+│   │   └── d_con_srv/            # Connector service
+│   ├── dibonit_itt/              # IT Tools application
+│   ├── dibonit_its/              # IT Services application
+│   ├── dibonit_lbl/              # Load balancer
+│   ├── common/                   # Common IT libraries
+│   │   ├── d_err_lib/            # Error management
+│   │   └── d_log_lib/            # Logging management
+│   └── dibonit_dat/              # Data management
+│       ├── d_db_lib/             # Database library
+│       ├── d_db_srv/             # Database service
+│       └── d_buf_lib/            # Buffer management
+├── manuf/                        # Manufacturing block
+│   ├── dibonit_mes_app/          # Manufacturing Execution System
+│   └── shopfloors/
+│       ├── d_aut_app/            # Automation software
+│       ├── d_fac_app/            # Facilities management
+│       └── d_flw_app/            # Production flows
+├── d_erp_app/                    # ERP System
+├── d_msg_app/                    # Messaging system
+└── d_drv_app/                    # Drive system
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Rust 1.70+ (recommended: latest stable)
+- Cargo (comes with Rust)
+- Docker (optional, for containerized deployment)
+- PostgreSQL/MySQL (for database services)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/Mickael4238/dibonit_egs.git
+cd dibonit_egs
+
+# Build the entire workspace
+cargo build --workspace
+
+# Run tests
+cargo test --workspace
+```
+
+### Development Setup
+
+```bash
+# Build a specific component
+cargo build -p d_esb_lib
+cargo build -p d_esb_srv
+
+# Run a service
+cargo run -p d_esb_srv
+
+# Run with logging
+RUST_LOG=debug cargo run -p d_esb_srv
+```
+
+---
+
+## Versioning Strategy
+
+### Semantic Versioning
+
+This project follows semantic versioning principles:
+- **MAJOR**: Breaking changes, incompatible API modifications
+- **MINOR**: Backward-compatible new features
+- **PATCH**: Backward-compatible bug fixes
+
+### Branch Strategy
+
+| Branch Type | Pattern | Purpose | Deployment Target |
+|-------------|---------|---------|-------------------|
+| `main` | `main` | Production-ready releases | Production |
+| `dev` | `dev` | Integration of validated features | N/A |
+| `feat_x.y.z_<desc>` | `feat_0.1.0_new_feature` | Work in progress features | Dev environment |
+| `wip_x.y.z.m_<desc>` | `wip_0.1.0.0_feature_stage` | Work in progress (sub-feature) | Local only |
+| `rel_x.y_<desc>` | `rel_0.1_testing` | Release candidate for QA | Qualification |
+
+### Branch Workflow
+
+```mermaid
+graph TD
+    main --> |new release branches from| dev
+    dev --> |new feature branches from| feat_x.y.z
+    feat_x.y.z --> |complete stage| wip_x.y.z.m
+    wip_x.y.z.m --> |stage complete, unit tests pass| feat_x.y.z
+    feat_x.y.z --> |integration tests pass| rel_x.y
+    rel_x.y --> |user acceptance validated| dev
+    rel_x.y --> |pilot successful, no errors| main
+```
+
+### Commit Message Convention
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+Example:
+```
+feat(esb): add message validation middleware
+
+- Add JSON schema validation for incoming messages
+- Support custom validation rules per contract
+- Update d_esb_lib to include validation module
+
+Closes #123
+```
+
+---
+
+## Current Focus: ESB Library (d_esb_lib)
+
+The immediate priority is developing the **d_esb_lib** library, which provides:
+
+- **Message serialization/deserialization** for ESB communication
+- **Connection management** to ESB service instances
+- **Contract enforcement** at the client level
+- **Error handling** for communication failures
+- **Retry and timeout** mechanisms
+- **Authentication and authorization** helpers
+
+### Next Steps for ESB Library
+
+1. **Define core message types** and serialization format
+2. **Implement connection pool** for ESB service communication
+3. **Create contract registry** for client-side validation
+4. **Build error handling** framework
+5. **Add logging and tracing** support
+6. **Write unit tests** for all components
+7. **Create integration tests** with d_esb_srv
+
+---
+
+## Deployment
+
+### Docker Deployment
+
+```bash
+# Build Docker image for a service
+docker build -t dibonit/d_esb_srv -f it/dibonit_esb/d_esb_srv/Dockerfile .
+
+# Run the service
+docker run -d --name esb-service -p 8080:8080 dibonit/d_esb_srv
+```
+
+### Kubernetes Deployment
+
+```yaml
+# Example deployment for ESB service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dibonit-esb
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dibonit-esb
+  template:
+    metadata:
+      labels:
+        app: dibonit-esb
+    spec:
+      containers:
+      - name: esb
+        image: dibonit/d_esb_srv:latest
+        ports:
+        - containerPort: 8080
+```
+
+---
+
+## Contributing
+
+### Code Standards
+
+- Follow Rust best practices and idioms
+- Use `clippy` for linting: `cargo clippy --workspace`
+- Format code with `cargo fmt --workspace`
+- All public APIs must be documented with `///` comments
+- All errors must be properly typed and handled
+
+### Pull Request Process
+
+1. Branch from the appropriate base branch (feat, wip, etc.)
+2. Make small, focused commits
+3. Ensure all tests pass
+4. Ensure code is formatted and passes clippy
+5. Submit PR with clear description and references to related issues
+6. Await review and address feedback
+
+### Testing
+
+- **Unit tests**: Test individual functions and modules
+- **Integration tests**: Test component interactions
+- **Contract tests**: Verify message exchange contracts
+- **E2E tests**: Test complete workflows
+
+```bash
+# Run all tests
+cargo test --workspace
+
+# Run tests with coverage
+cargo tarpaulin --workspace
+```
+
+---
+
+## License
+
+This project is proprietary software. All rights reserved.
+
+---
+
+## Contact
+
+For questions or support, please contact the project maintainer.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
