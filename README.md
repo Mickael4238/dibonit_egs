@@ -20,3 +20,22 @@ ERP -> contract 1 : GET_CUSTOMER_PROCUCT_ORDER (customerID) return the product o
 MES -> contract 1 : ASK_CUSTOMER_PROCUCT_ORDER (customerID) a message that is allowed to send by the MES.
 
 # Versions
+
+
+# Git
+main
+    new release should branch from it.
+    can be deployed to production environement
+dev
+    new feature should branch from it.
+feat_x.y.z_<desc> 
+    new wip (work in progess) should branch from it
+    can be deployed to dev environment for testing.
+    should be merge to rel_x.y when the integration test on the dev environement are validated.
+wip_x.y.z.m_<desc> 
+    should be merge to feat_x.y.z when a complete stage of the feature is acomplished and the unit tests are validated.
+rel_x.y_<desc>
+    can be deployed to qualification environment for testing with users and interacting with other production apps.
+    should be merge to dev when user acceptance is validated in qualif.
+    should be merge to main when no related errors are found in qualif for a certain time (pilote)
+    
