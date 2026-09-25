@@ -1,0 +1,40 @@
+[workspace]
+members = [
+  # IT
+    # DIBONIT_ESB : handle communication between all entrprises applications and services.
+      #IDEA "it/dibonit_esb/d_esb_lib",     # An esb library used by all internal RUST applications and services to connect each others
+      #IDEA "it/dibonit_esb/d_esb_srv",     # An esb service who connect applications and services within a server (or docker) and transmit to remote instances of this same service.
+      #IDEA "it/dibonit_esb/d_con_srv",     # A connector service who can connect all external applications and services to link them to the dibonit_esb. (SECS,MODBUS,TCP,WEBSERVICES,APIS...)
+	# DIBONIT_IT_UTILS
+      #IDEA "it/d_itt_app",                 # An it tools application who allows to deploy, stop, start, analyse apps, servers, dockers. (can be cut in different apps)
+      #IDEA "it/d_its_app",                 # An it services application who handle request from/to it developers from/to other empoyees.
+	  #IDEA "it/d_lbl_app",                 # A load balancer application used by web uis.
+	# DIBONIT_DATA
+      #IDEA "it/dibonit_dat/d_db_lib",      # A custom coded database library
+      #IDEA "it/dibonit_dat/d_db_srv",      # A Serive running the database librairy
+      #IDEA "it/dibonit_dat/d_buf_lib",     # All common buffer mangement library
+	# COMMON
+	  #IDEA "it/common/d_err_lib",          # All common error  mangement library
+	  #IDEA "it/common/d_log_lib",          # All common log  mangement library
+		
+  # MANUFACTURING
+    #IDEA "manuf/dibonit_mes_app",          # A Manufacturing Execution Sofware
+	# SHOPFLOORS	
+      #IDEA "manuf/shopfloors/d_aut_app",   # An automation software that handle manufacturing tools
+      #IDEA "manuf/shopfloors/d_fac_app",   # A software that handle facilities PLCs, supervisions
+	  
+  # PROCESS
+      #IDEA "manuf/shopfloors/d_flw_app",   # An application, who handle production flows, production lines
+
+  #IDEA "d_erp_app",         # A Entreprise Ressource planning software
+  #IDEA "d_msg_app",         # A user message sofware who create links beetween entreprise objets and talks
+  #IDEA "d_drv_app",         # A drive linked to entreprise objets
+
+]
+resolver = "2"
+
+# Optional : external dependencies
+[workspace.dependencies]
+#serde = "1.0"
+#tokio = { version = "1.0", features = ["full"] }
+
