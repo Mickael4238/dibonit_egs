@@ -8,7 +8,7 @@ members = [
     # The core communication infrastructure for the entire ecosystem
     "it/dibonit_esb/d_esb_lib",    # ESB library for internal Rust applications
     "it/dibonit_esb/d_esb_srv",    # ESB service - runs on each server/docker
-    "it/dibonit_esb/d_con_srv",    # Connector service for external applications
+    "it/dibonit_esb/d_esb_con",    # Connector service for external applications
     
     # DIBONIT IT UTILITIES
     "it/d_itt_app",               # IT tools application (deploy, manage apps)

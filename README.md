@@ -25,9 +25,9 @@ The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication
 |-----------|------|---------|
 | `d_esb_lib` | Library | Rust library used by internal applications to connect to the ESB |
 | `d_esb_srv` | Service | Runs on each server or Docker container, managing local communication and routing to remote ESB instances |
-| `d_con_srv` | Service | Connector service enabling external applications (non-Rust) to integrate with the ESB |
+| `d_esb_con` | Service | Connector service enabling external applications (non-Rust) to integrate with the ESB |
 
-#### Supported Connector Protocols
+#### Supported Connector Protocols (d_esb_con)
 
 - SECS (Semiconductor Equipment Communication Standard)
 - MODBUS (Industrial communication protocol)
@@ -38,16 +38,26 @@ The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication
 #### Communication Flow
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   ERP System    │────▶│   ESB Service   │────▶│   MES System    │
-│ (d_erp_app)     │◀────│ (d_esb_srv)     │◀────│ (dibonit_mes)   │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                      ▲
-                                      │
-                    ┌─────────────────┐
-                    │ External App     │
-                    │ (via d_con_srv)  │
-                    └─────────────────┘
+                     EXTERNAL APPS                       ESB                                    INTERNAL APPS
+                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+DOCKER1             │   ERP System    │────▶│    Connector    │────▶│   ESB Service   │────▶│   BUSINESS APP1 │
+                    │                 │◀────| (d_esb_con)     │◀────| (d_esb_srv)     │◀────│ (dibonit_xxx)   │
+                    └─────────────────┘     └─────────────────┘     |                 │     └─────────────────┘
+                                                                    |                 │     ┌─────────────────┐
+                                                                    |                 │────▶│   BUSINESS APP2 │
+                                                                    |                 │◀────│ (dibonit_xxx)   │
+                                                                    └─────────────────┘     └─────────────────┘     
+                                                                                    ▲
+                                                                                    │
+                                                                                    ▼
+                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+DOCKER2             │   MES System    │────▶│    Connector    │────▶│   ESB Service   │────▶│   MANUF APP1    │
+                    │                 │◀────| (d_esb_con)     │◀────| (d_esb_srv)     │◀────│ (dibonit_xxx)   │
+                    └─────────────────┘     └─────────────────┘     |                 │     └─────────────────┘
+                                                                    |                 │     ┌─────────────────┐
+                                                                    |                 │────▶│   MANUF APP2    │
+                                                                    |                 │◀────│ (dibonit_xxx)   │
+                                                                    └─────────────────┘     └─────────────────┘   
 ```
 
 ### Application Organization
@@ -100,7 +110,7 @@ dibonit_egs/
 │   ├── dibonit_esb/              # Enterprise Service Bus
 │   │   ├── d_esb_lib/            # ESB Rust library
 │   │   ├── d_esb_srv/            # ESB service
-│   │   └── d_con_srv/            # Connector service
+│   │   └── d_esb_con/            # Connector service
 │   ├── dibonit_itt/              # IT Tools application
 │   ├── dibonit_its/              # IT Services application
 │   ├── dibonit_lbl/              # Load balancer
