@@ -1,143 +1,44 @@
 [workspace]
 members = [
-    # ========================================================================
-    # IT SERVICES BLOCK
-    # ========================================================================
-    
-    # DIBONIT ESB: Enterprise Service Bus
-    # The core communication infrastructure for the entire ecosystem
-    "it/dibonit_esb/d_esb_lib",    # ESB library for internal Rust applications
-    "it/dibonit_esb/d_esb_srv",    # ESB service - runs on each server/docker
-    "it/dibonit_esb/d_esb_con",    # Connector service for external applications
-    
-    # DIBONIT IT UTILITIES
-    "it/d_itt_app",               # IT tools application (deploy, manage apps)
-    "it/d_its_app",               # IT services application (developer support)
-    "it/d_lbl_app",               # Load balancer for web UIs
-    
-    # DIBONIT DATA MANAGEMENT
-    "it/dibonit_dat/d_db_lib",    # Custom database library
-    "it/dibonit_dat/d_db_srv",    # Database service
-    "it/dibonit_dat/d_buf_lib",   # Buffer management library
-    
-    # COMMON LIBRARIES
-    "it/common/d_err_lib",        # Error management library
-    "it/common/d_log_lib",        # Logging management library
+    # IT
+    # DIBONIT_ESB: handle communication between all enterprise applications and services.
+    "it/dibonit_esb/d_esb_lib",     # An ESB library used by all internal RUST applications and services to connect each others
+    "it/dibonit_esb/d_esb_srv",     # An ESB service who connects applications and services within a server (or docker) and transmits to remote instances of this same service.
+    "it/dibonit_esb/d_esb_con",     # A connector service who can connect all external applications and services to link them to the dibonit_esb. (SECS, MODBUS, TCP, WEB SERVICES, APIs...)
+    # DIBONIT_IT_UTILS
+    "it/dibonit_itt/d_itt_app",     # An IT tools application who allows to deploy, stop, start, analyse apps, servers, dockers. (can be cut in different apps)
+    "it/dibonit_its/d_its_app",     # An IT services application who handles requests from/to IT developers from/to other employees.
+    "it/dibonit_lbl/d_lbl_app",     # A load balancer application used by web UIs.
+    # DIBONIT_DATA
+    "it/dibonit_dat/d_db_lib",      # A custom coded database library
+    "it/dibonit_dat/d_db_srv",      # A service running the database library
+    "it/dibonit_dat/d_buf_lib",     # All common buffer management library
+    # COMMON
+    "it/common/d_err_lib",          # All common error management library
+    "it/common/d_log_lib",          # All common log management library
+    "it/dibonit_itt/d_cry_srv",     # Encryption services/library
 
-    # ========================================================================
-    # MANUFACTURING BLOCK
-    # ========================================================================
-    
-    # MANUFACTURING EXECUTION SYSTEM
-    "manuf/dibonit_mes_app",      # Manufacturing Execution System
-    
-    # SHOP FLOORS
-    "manuf/shopfloors/d_aut_app", # Automation software (PLC, tools)
-    "manuf/shopfloors/d_fac_app", # Facilities management (PLC, supervision)
-    "manuf/shopfloors/d_flw_app", # Production flows and lines management
+    # MANUFACTURING
+    "manuf/dibonit_mes_app",        # A Manufacturing Execution Software
+    # SHOPFLOORS
+    "manuf/shopfloors/d_aut_app",   # An automation software that handles manufacturing tools
+    "manuf/shopfloors/d_fac_app",   # A software that handles facilities PLCs, supervisions
+    "manuf/shopfloors/d_flw_app",   # An application that handles production flows, production lines
 
-    # ========================================================================
-    # BUSINESS APPLICATIONS
-    # ========================================================================
-    
-    "d_erp_app",                  # Enterprise Resource Planning
-    "d_msg_app",                  # User messaging and object linking
-    "d_drv_app",                  # Drive/document management
+    # PROCESS
+    "manuf/d_flw_app",              # An application that handles production flows
+
+    # MAINTENANCE
+    "manuf/d_gmao_app",             # Maintenance (Gmao) application
+
+    # ENTERPRISE
+    "d_erp_app",                   # An Enterprise Resource Planning software
+    "d_msg_app",                   # A user message software who creates links between enterprise objects and talks
+    "d_drv_app",                   # A drive linked to enterprise objects
 ]
 resolver = "2"
 
-# ========================================================================
-# WORKSPACE-LEVEL DEPENDENCIES
-# Shared dependencies for all workspace members
-# ========================================================================
-
+# Optional: external dependencies
 [workspace.dependencies]
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-bincode = "1.3"
-
-# Async runtime
-tokio = { version = "1.0", features = ["full"] }
-async-trait = "0.1"
-
-# Networking
-reqwest = { version = "0.11", features = ["json"] }
-hyper = "0.14"
-websocket = "0.26"
-
-# Logging and tracing
-log = "0.4"
-env_logger = "0.10"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Error handling
-thiserror = "1.0"
-anyhow = "1.0"
-
-# Configuration
-config = "0.13"
-serde_with = "3.0"
-
-# Database
-sqlx = { version = "0.7", features = ["postgres", "runtime-tokio"] }
-
-# Testing
-mockall = "0.11"
-testcontainers = "0.15"
-
-# Validation
-validator = "0.16"
-schemars = "0.8"
-
-# Utilities
-uuid = { version = "1.4", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-once_cell = "1.18"
-lazy_static = "1.4"
-
-# ========================================================================
-# WORKSPACE PROFILES
-# ========================================================================
-
-[profile.dev]
-opt-level = 1
-debug = true
-debug-assertions = true
-overflow-checks = true
-
-[profile.release]
-opt-level = 3
-debug = false
-debug-assertions = false
-overflow-checks = false
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true
-
-[profile.test]
-opt-level = 1
-debug = true
-debug-assertions = true
-overflow-checks = true
-
-# ========================================================================
-# WORKSPACE METADATA
-# ========================================================================
-
-[workspace.metadata]
-# Project information
-name = "dibonit_egs"
-version = "0.0.0"
-description = "Dibonit Entreprise Global Softwares - Enterprise application ecosystem"
-authors = ["Mickael4238"]
-license = "Proprietary"
-repository = "https://github.com/Mickael4238/dibonit_egs"
-
-# Build information
-rust-version = "1.70"
-readme = "README.md"
-keywords = ["enterprise", "esb", "manufacturing", "mes", "erp"]
-categories = ["development-tools"]
+# serde = "1.0"
+# tokio = { version = "1.0", features = ["full"] }

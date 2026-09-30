@@ -17,7 +17,7 @@ Dibonit EGS provides a **secure, clean, readable, and efficient** architecture f
 
 ### Core Component: Dibonit Enterprise Service Bus (ESB)
 
-The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication between enterprise applications and services. It centralizes data flow management, but Uncentralizes the data flow. that data shall not pass through an esb server but go strait from caller to callee as fast as possible, as secure as possible. A cache can be configured so redondant call to a single remote data from several apps located on the same docker can result as a single network call.
+The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication between enterprise applications and services. It centralizes data flow management, but uncentralizes the data flow: data shall not pass through an ESB server but go straight from caller to callee as fast as possible, as secure as possible. A cache can be configured so redundant calls to a single remote data from several apps located on the same docker can result in a single network call.
 
 #### ESB Components
 
@@ -39,25 +39,25 @@ The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication
 
 ```
                      EXTERNAL APPS                       ESB                                    INTERNAL APPS
-                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 DOCKER1             │   ERP System    │────▶│    Connector    │────▶│   ESB Service   │────▶│   BUSINESS APP1 │
-                    │                 │◀────| (d_esb_con)     │◀────| (d_esb_srv)     │◀────│ (dibonit_xxx)   │
-                    └─────────────────┘     └─────────────────┘     |                 │     └─────────────────┘
-                                                                    |                 │     ┌─────────────────┐
-                                                                    |                 │────▶│   BUSINESS APP2 │
-                                                                    |                 │◀────│ (dibonit_xxx)   │
-                                                                    └─────────────────┘     └─────────────────┘     
-                                                                                    ▲
+                    │                 │     │ (d_esb_con)     │     │ (d_esb_srv)     │     │ (dibonit_xxx)   │
+                    └─────────────────┘     └─────────────────┘     │                 │     └─────────────────┘
+                                                                    │                 │     ┌─────────────────┐
+                                                                    │                 │────▶│   BUSINESS APP2 │
+                                                                    │                 │     │ (dibonit_xxx)   │
+                                                                    └─────────────────┘     └─────────────────┘
+                                                                                    │
                                                                                     │
                                                                                     ▼
-                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 DOCKER2             │   MES System    │────▶│    Connector    │────▶│   ESB Service   │────▶│   MANUF APP1    │
-                    │                 │◀────| (d_esb_con)     │◀────| (d_esb_srv)     │◀────│ (dibonit_xxx)   │
-                    └─────────────────┘     └─────────────────┘     |                 │     └─────────────────┘
-                                                                    |                 │     ┌─────────────────┐
-                                                                    |                 │────▶│   MANUF APP2    │
-                                                                    |                 │◀────│ (dibonit_xxx)   │
-                                                                    └─────────────────┘     └─────────────────┘   
+                    │                 │     │ (d_esb_con)     │     │ (d_esb_srv)     │     │ (dibonit_xxx)   │
+                    └─────────────────┘     └─────────────────┘     │                 │     └─────────────────┘
+                                                                    │                 │     ┌─────────────────┐
+                                                                    │                 │────▶│   MANUF APP2    │
+                                                                    │                 │     │ (dibonit_xxx)   │
+                                                                    └─────────────────┘     └─────────────────┘
 ```
 
 ### Application Organization
@@ -66,14 +66,14 @@ Applications are organized into **enterprise blocks**, each representing a funct
 
 - **IT Services**: Infrastructure, tools, and utilities
 - **Manufacturing**: Production systems and MES
-- ***Shop Floors***: Automation, facilities, and production lines
-- ***Process***: Process flows and lines management (from product creation to final)
-- ***Production*** : Production zone and 'row' management.(for specific types of process tools)
-- ***Maintenance*** : Gmao
-- **Entreprise** : softwares at entreprise level.
-- ***ERP***: Enterprise Resource Planning
-- ***Messaging***: User communication and object linking
-- ***Drive***: Document and file management
+- **Shop Floors**: Automation, facilities, and production lines
+- **Process**: Process flows and lines management (from product creation to final)
+- **Production**: Production zone and row management (for specific types of process tools)
+- **Maintenance**: Gmao
+- **Enterprise**: Softwares at enterprise level
+- **ERP**: Enterprise Resource Planning
+- **Messaging**: User communication and object linking
+- **Drive**: Document and file management
 
 Each block publishes and receives data **exclusively through the ESB**, ensuring loose coupling and clear contract boundaries.
 
@@ -82,7 +82,7 @@ Each block publishes and receives data **exclusively through the ESB**, ensuring
 Contracts define the message exchange agreements between applications and the ESB. Each contract specifies:
 
 - **Message type**: Request, response, event, command
-- **Payload structure**: Data format and validation rules (to check if that will not be to hard to maintain, maybe there will just be row data)
+- **Payload structure**: Data format and validation rules (to check if that will not be too hard to maintain, maybe there will just be raw data)
 - **Permissions**: Which applications can send/receive each message type
 - **Routing rules**: How messages are directed between applications
 
@@ -91,8 +91,8 @@ Contracts define the message exchange agreements between applications and the ES
 **Contract: `GET_CUSTOMER_PRODUCT_ORDER`**
 - **Publisher**: ERP System
 - **Subscribers**: MES, Automation Systems
-- **Request**: `{ customer_id: String }`(to check)
-- **Response**: `{ customer_id: String, products: Vec<ProductOrder> }`(to check)
+- **Request**: `{ customer_id: String }` (to check)
+- **Response**: `{ customer_id: String, products: Vec<ProductOrder> }` (to check)
 - **Description**: Retrieves all products ordered by a specific customer
 
 **Contract: `ASK_CUSTOMER_PRODUCT_ORDER`**
@@ -115,22 +115,20 @@ dibonit_egs/
 │   │   ├── d_esb_srv/            # ESB service
 │   │   └── d_esb_con/            # Connector service
 │   ├── dibonit_itt/              # IT Tools application
-│   │   └── d_cry_srv/            # Encryption services/library?
+│   │   └── d_cry_srv/            # Encryption services/library
 │   ├── dibonit_its/              # IT Services application
 │   ├── dibonit_lbl/              # Load balancer
-│   ├── common/                   # Common IT libraries
-│   │   ├── d_err_lib/            # Error management
-│   │   └── d_log_lib/            # Logging management
-│   └── dibonit_dat/              # Data management
-│       ├── d_db_lib/             # Database library
-│       ├── d_db_srv/             # Database service
-│       └── d_buf_lib/            # Buffer management
-├── manuf/                        # Manufacturing block
-│   ├── dibonit_mes_app/          # Manufacturing Execution System
-│   └── shopfloors/
-│       ├── d_aut_app/            # Automation software
-│       ├── d_fac_app/            # Facilities management
-│       └── d_flw_app/            # Production flows
+│   └── common/                   # Common IT libraries
+│       ├── d_err_lib/            # Error management
+│       └── d_log_lib/            # Logging management
+│
+└── manuf/                        # Manufacturing block
+    ├── dibonit_mes_app/          # Manufacturing Execution System
+    └── shopfloors/
+        ├── d_aut_app/            # Automation software
+        ├── d_fac_app/            # Facilities management
+        └── d_flw_app/            # Production flows
+
 ├── d_erp_app/                    # ERP System
 ├── d_msg_app/                    # Messaging system
 └── d_drv_app/                    # Drive system
@@ -182,7 +180,7 @@ RUST_LOG=debug cargo run -p d_esb_srv
 ### Semantic Versioning
 
 This project follows semantic versioning principles:
-- **MAJOR**: Breaking changes, incompatible API modifications (a +1 version shall be compatible with it's -1, but raise a deprecated warning when a +2 version will not be able anymore to handle the request.
+- **MAJOR**: Breaking changes, incompatible API modifications (a +1 version shall be compatible with its -1, but raise a deprecated warning when a +2 version will not be able anymore to handle the request)
 - **MINOR**: Backward-compatible new features
 - **PATCH**: Backward-compatible bug fixes
 
@@ -244,11 +242,12 @@ The immediate priority is developing the **d_esb_lib** library, which provides:
 - **Error handling** for communication failures
 - **Retry and timeout** mechanisms
 - **Authentication and authorization** helpers
-esb_lib is designed to be used by all app who wants to connect the esb_srv. 
-the app using the lib and the esb_srv are running on the same docker.they are both in rust. the aim is to exchange data from esb_srv to many app using the esb_lib running on the same docker as fast as possible. 
-the esb_lib will keep in memory the contracts given by esb_srv and reject messages from app(who is using the lib) who does not respect contract.once the contract is validated the message payload may be encrypted (for now the encryption will do nothing) and sent to esb_srv. 
-there should be some security when an app connect the srv : example local ssh key, or something else. an app not allowed must be rejected by esb_srv. the app trigram will be sent when connecting so the esb_srv knows who is connected. the message name will not be encrypted as the esb_srv has to know it.
 
+The esb_lib is designed to be used by all apps that want to connect to the esb_srv. The app using the lib and the esb_srv are running on the same docker. They are both in Rust. The aim is to exchange data from esb_srv to many apps using the esb_lib running on the same docker as fast as possible.
+
+The esb_lib will keep in memory the contracts given by esb_srv and reject messages from apps (who are using the lib) that do not respect contracts. Once the contract is validated, the message payload may be encrypted (for now the encryption will do nothing) and sent to esb_srv.
+
+There should be some security when an app connects to the srv: for example, local SSH key, or something else. An app not allowed must be rejected by esb_srv. The app trigram will be sent when connecting so the esb_srv knows who is connected. The message name will not be encrypted as the esb_srv has to know it.
 
 ### Next Steps for ESB Library
 
