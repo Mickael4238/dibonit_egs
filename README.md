@@ -66,11 +66,14 @@ Applications are organized into **enterprise blocks**, each representing a funct
 
 - **IT Services**: Infrastructure, tools, and utilities
 - **Manufacturing**: Production systems and MES
-- **Shop Floors**: Automation, facilities, and production lines
-- **Process**: Production flows and line management
-- **ERP**: Enterprise Resource Planning
-- **Messaging**: User communication and object linking
-- **Drive**: Document and file management
+- ***Shop Floors***: Automation, facilities, and production lines
+- ***Process***: Process flows and lines management (from product creation to final)
+- ***Production*** : Production zone and 'row' management.(for specific types of process tools)
+- ***Maintenance*** : Gmao
+- **Entreprise** : softwares at entreprise level.
+- ***ERP***: Enterprise Resource Planning
+- ***Messaging***: User communication and object linking
+- ***Drive***: Document and file management
 
 Each block publishes and receives data **exclusively through the ESB**, ensuring loose coupling and clear contract boundaries.
 
@@ -79,7 +82,7 @@ Each block publishes and receives data **exclusively through the ESB**, ensuring
 Contracts define the message exchange agreements between applications and the ESB. Each contract specifies:
 
 - **Message type**: Request, response, event, command
-- **Payload structure**: Data format and validation rules
+- **Payload structure**: Data format and validation rules (to check if that will not be to hard to maintain, maybe there will just be row data)
 - **Permissions**: Which applications can send/receive each message type
 - **Routing rules**: How messages are directed between applications
 
@@ -88,8 +91,8 @@ Contracts define the message exchange agreements between applications and the ES
 **Contract: `GET_CUSTOMER_PRODUCT_ORDER`**
 - **Publisher**: ERP System
 - **Subscribers**: MES, Automation Systems
-- **Request**: `{ customer_id: String }`
-- **Response**: `{ customer_id: String, products: Vec<ProductOrder> }`
+- **Request**: `{ customer_id: String }`(to check)
+- **Response**: `{ customer_id: String, products: Vec<ProductOrder> }`(to check)
 - **Description**: Retrieves all products ordered by a specific customer
 
 **Contract: `ASK_CUSTOMER_PRODUCT_ORDER`**
