@@ -8,7 +8,7 @@ Dibonit EGS provides a **secure, clean, readable, and efficient** architecture f
 
 - **Well-defined perimeters** for each application and service
 - **Easy deployment and maintenance** across environments
-- **Centralized communication** via the Dibonit Enterprise Service Bus (ESB)
+- **Uncentralized centralized communication** via the Dibonit Enterprise Service Bus (ESB)
 - **Modular design** allowing custom applications to integrate with existing enterprise systems
 
 ---
@@ -17,7 +17,7 @@ Dibonit EGS provides a **secure, clean, readable, and efficient** architecture f
 
 ### Core Component: Dibonit Enterprise Service Bus (ESB)
 
-The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication between enterprise applications and services.
+The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication between enterprise applications and services. It centralizes data flow management, but Uncentralizes the data flow. that data shall not pass through an esb server but go strait from caller to callee as fast as possible, as secure as possible. A cache can be configured so redondant call to a single remote data from several apps located on the same docker can result as a single network call.
 
 #### ESB Components
 
@@ -115,6 +115,7 @@ dibonit_egs/
 │   │   ├── d_esb_srv/            # ESB service
 │   │   └── d_esb_con/            # Connector service
 │   ├── dibonit_itt/              # IT Tools application
+│   │   └── d_cry_srv/            # Encryption services/library?
 │   ├── dibonit_its/              # IT Services application
 │   ├── dibonit_lbl/              # Load balancer
 │   ├── common/                   # Common IT libraries
@@ -181,7 +182,7 @@ RUST_LOG=debug cargo run -p d_esb_srv
 ### Semantic Versioning
 
 This project follows semantic versioning principles:
-- **MAJOR**: Breaking changes, incompatible API modifications
+- **MAJOR**: Breaking changes, incompatible API modifications (a +1 version shall be compatible with it's -1, but raise a deprecated warning when a +2 version will not be able anymore to handle the request.
 - **MINOR**: Backward-compatible new features
 - **PATCH**: Backward-compatible bug fixes
 
@@ -189,7 +190,7 @@ This project follows semantic versioning principles:
 
 | Branch Type | Pattern | Purpose | Deployment Target |
 |-------------|---------|---------|-------------------|
-| `main` | `main` | Production-ready releases | Production |
+| `main` | `main` | Production-ready safe releases | Production |
 | `dev` | `dev` | Integration of validated features | N/A |
 | `feat_x.y.z_<desc>` | `feat_0.1.0_new_feature` | Work in progress features | Dev environment |
 | `wip_x.y.z.m_<desc>` | `wip_0.1.0.0_feature_stage` | Work in progress (sub-feature) | Local only |
@@ -243,6 +244,11 @@ The immediate priority is developing the **d_esb_lib** library, which provides:
 - **Error handling** for communication failures
 - **Retry and timeout** mechanisms
 - **Authentication and authorization** helpers
+esb_lib is designed to be used by all app who wants to connect the esb_srv. 
+the app using the lib and the esb_srv are running on the same docker.they are both in rust. the aim is to exchange data from esb_srv to many app using the esb_lib running on the same docker as fast as possible. 
+the esb_lib will keep in memory the contracts given by esb_srv and reject messages from app(who is using the lib) who does not respect contract.once the contract is validated the message payload may be encrypted (for now the encryption will do nothing) and sent to esb_srv. 
+there should be some security when an app connect the srv : example local ssh key, or something else. an app not allowed must be rejected by esb_srv. the app trigram will be sent when connecting so the esb_srv knows who is connected. the message name will not be encrypted as the esb_srv has to know it.
+
 
 ### Next Steps for ESB Library
 
