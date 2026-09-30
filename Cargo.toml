@@ -35,6 +35,7 @@ members = [
     "d_erp_app",                   # An Enterprise Resource Planning software
     "d_msg_app",                   # A user message software who creates links between enterprise objects and talks
     "d_drv_app",                   # A drive linked to enterprise objects
+    "it/egs_lib",                  # EGS Library - Foundational library for Dibonit Entreprise Global Softwares
 ]
 resolver = "2"
 

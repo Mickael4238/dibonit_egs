@@ -1,0 +1,53 @@
+[package]
+name = "egs_lib"
+version = "0.0.0"
+edition = "2021"
+authors = ["Mickael4238 <81443922+Mickael4238@users.noreply.github.com>"]
+description = "EGS Library - Foundational library for Dibonit Entreprise Global Softwares"
+license = "Proprietary"
+readme = "README.md"
+keywords = ["egs", "dibonit", "enterprise", "library"]
+categories = ["development-tools"]
+
+[dependencies]
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Validation
+validator = { version = "0.16", features = ["derive"] }
+
+# UUID for identifiers
+uuid = { version = "1.4", features = ["v4", "serde"] }
+
+[dev-dependencies]
+# Testing utilities
+mockall = "0.11"
+test-case = "3.1"
+
+[features]
+default = []
+full = ["serde", "tracing", "chrono", "uuid"]
+
+[lib]
+name = "egs_lib"
+path = "src/lib.rs"
+
+[[test]]
+name = "types_tests"
+path = "tests/types/mod.rs"
+
+[[test]]
+name = "utils_tests"
+path = "tests/utils/mod.rs"
