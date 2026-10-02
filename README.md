@@ -17,8 +17,7 @@ Dibonit EGS provides a **secure, clean, readable, and efficient** architecture f
 
 ### Core Component: Dibonit Enterprise Service Bus (ESB)
 
-The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication between enterprise applications and services. It centralizes data flow management, but uncentralizes the data flow: data shall not pass through an ESB server but go straight from caller to callee as fast as possible, as secure as possible. A cache can be configured so redundant calls to a single remote data from several apps located on the same docker can result in a single network call.
-
+The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication between enterprise applications and services. It centralizes the management of data flows while decentralizing their execution: data must not transit through an ESB server, but travel directly from caller to callee, with optimal performance and security. A cache can be configured so that redundant calls to the same remote data source, issued by multiple applications hosted on the same Docker host, are consolidated into a single network call.
 #### ESB Components
 
 | Component | Type | Purpose |
@@ -39,19 +38,19 @@ The ESB is the backbone of the Dibonit EGS ecosystem, handling all communication
 
 ```
                      EXTERNAL APPS                       ESB                                    INTERNAL APPS
-                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-DOCKER1             │   ERP System    │────▶│    Connector    │────▶│   ESB Service   │────▶│   BUSINESS APP1 │
+                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+DOCKER1             │   ERP System    │◀───▶│    Connector    │◀───▶│   ESB Service   │◀───▶│   BUSINESS APP1 │
                     │                 │     │ (d_esb_con)     │     │ (d_esb_srv)     │     │ (dibonit_xxx)   │
                     └─────────────────┘     └─────────────────┘     │                 │     └─────────────────┘
                                                                     │                 │     ┌─────────────────┐
-                                                                    │                 │────▶│   BUSINESS APP2 │
+                                                                    │                 │◀───▶│   BUSINESS APP2 │
                                                                     │                 │     │ (dibonit_xxx)   │
                                                                     └─────────────────┘     └─────────────────┘
-                                                                                    │
+                                                                                    ▲
                                                                                     │
                                                                                     ▼
-                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-DOCKER2             │   MES System    │────▶│    Connector    │────▶│   ESB Service   │────▶│   MANUF APP1    │
+                    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+DOCKER2             │   MES System    │◀───▶│    Connector    │◀───▶│   ESB Service   │◀───▶│   MANUF APP1    │
                     │                 │     │ (d_esb_con)     │     │ (d_esb_srv)     │     │ (dibonit_xxx)   │
                     └─────────────────┘     └─────────────────┘     │                 │     └─────────────────┘
                                                                     │                 │     ┌─────────────────┐
@@ -243,11 +242,11 @@ The immediate priority is developing the **d_esb_lib** library, which provides:
 - **Retry and timeout** mechanisms
 - **Authentication and authorization** helpers
 
-The esb_lib is designed to be used by all apps that want to connect to the esb_srv. The app using the lib and the esb_srv are running on the same docker. They are both in Rust. The aim is to exchange data from esb_srv to many apps using the esb_lib running on the same docker as fast as possible.
+esb_lib is the client library intended for all applications that need to connect to esb_srv.  Its purpose is to enable high-throughput data exchange between one running service esb_srv and multiple applications using esb_lib on the same Docker host.
 
-The esb_lib will keep in memory the contracts given by esb_srv and reject messages from apps (who are using the lib) that do not respect contracts. Once the contract is validated, the message payload may be encrypted (for now the encryption will do nothing) and sent to esb_srv.
+esb_lib holds the contracts published by esb_srv in memory and rejects any message from a client application that does not conform to them. Once a message is validated against the contract, its payload may be encrypted (the current encryption implementation is a no-op placeholder) and transmitted to esb_srv.
 
-There should be some security when an app connects to the srv: for example, local SSH key, or something else. An app not allowed must be rejected by esb_srv. The app trigram will be sent when connecting so the esb_srv knows who is connected. The message name will not be encrypted as the esb_srv has to know it.
+Connection to esb_srv must be secured, for example through a local SSH key or an equivalent mechanism; unauthorized applications must be rejected. Upon connection, the application sends its trigram so that esb_srv can identify the caller. The message name remains in clear text, as esb_srv requires it for routing.
 
 ### Next Steps for ESB Library
 
