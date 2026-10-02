@@ -148,7 +148,7 @@ impl Token {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Message {
     /// app -> srv: connection request.
@@ -324,7 +324,7 @@ impl Broker {
         };
         let map = self.pending.lock().await;
         if let Some(tx) = map.get(&id) {
-            let _ = tx.send(msg);
+            let _ = tx.send(msg.clone());
             if terminal {
                 drop(map);
                 self.pending.lock().await.remove(&id);
@@ -534,7 +534,7 @@ async fn handle_conn<H: Handler>(
             }
         }
 
-        let (contract, id_request) = match req {
+        let (contract, id_request) = match &req {
             Message::Get { contract, id_request, .. }
             | Message::Publish { contract, id_request, .. } => (contract, id_request),
             _ => unreachable!(),
@@ -549,7 +549,7 @@ async fn handle_conn<H: Handler>(
                 let ctx = Ctx { broker: broker.clone() };
                 match handler.get(&ctx, &name, &contract, &id_request).await {
                     Ok(data) => {
-                        let _ = wtx.send(Message::Give { id_request, data }).await;
+                        let _ = wtx.send(Message::Give { id_request: id_request.clone() , data }).await;
                     }
                     Err(reason) => {
                         let _ = wtx.send(Message::Error { reason }).await;
@@ -564,7 +564,7 @@ async fn handle_conn<H: Handler>(
                 let ctx = Ctx { broker: broker.clone() };
                 match handler.publish(&ctx, &name, &contract, &id_request).await {
                     Ok(()) => {
-                        let _ = wtx.send(Message::Published { id_request }).await;
+                        let _ = wtx.send(Message::Published {  id_request: id_request.clone() }).await;
                     }
                     Err(reason) => {
                         let _ = wtx.send(Message::Error { reason }).await;
@@ -594,6 +594,7 @@ pub trait ClientHandler: Send + Sync + 'static {
 }
 
 /// Authenticated connection towards srv. Obtained through `Client::connect`.
+#[derive(Debug)]
 pub struct Client {
     tx: mpsc::Sender<Message>,
     /// id_request -> channel receiving the frames that answer our requests.
@@ -1034,9 +1035,9 @@ mod tests {
         let server = Server::bind(&sock).await.unwrap();
         tokio::spawn(server.run(Arc::new(RelayHandler)));
 
-        let (mut app1, _) =
+        let (app1, _) =
             Client::connect(&sock, "app1", "s3cret", None).await.unwrap();
-        let (mut app2, _) = Client::connect(
+        let (app2, _) = Client::connect(
             &sock,
             "app2",
             "s3cret",
