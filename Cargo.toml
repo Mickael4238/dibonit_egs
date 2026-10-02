@@ -1,0 +1,44 @@
+[workspace]
+members = [
+    # IT
+    # DIBONIT_ESB: handle communication between all enterprise applications and services.
+    "it/dibonit_esb/d_esb_lib",     # An ESB library used by all internal RUST applications and services to connect each others
+    "it/dibonit_esb/d_esb_srv",     # An ESB service who connects applications and services within a server (or docker) and transmits to remote instances of this same service.
+    "it/dibonit_esb/d_esb_con",     # A connector service who can connect all external applications and services to link them to the dibonit_esb. (SECS, MODBUS, TCP, WEB SERVICES, APIs...)
+    # DIBONIT_IT_UTILS
+    "it/dibonit_itt/d_itt_app",     # An IT tools application who allows to deploy, stop, start, analyse apps, servers, dockers. (can be cut in different apps)
+    "it/dibonit_its/d_its_app",     # An IT services application who handles requests from/to IT developers from/to other employees.
+    "it/dibonit_lbl/d_lbl_app",     # A load balancer application used by web UIs.
+    # DIBONIT_DATA
+    "it/dibonit_dat/d_db_lib",      # A custom coded database library
+    "it/dibonit_dat/d_db_srv",      # A service running the database library
+    "it/dibonit_dat/d_buf_lib",     # All common buffer management library
+    # COMMON
+    "it/common/d_err_lib",          # All common error management library
+    "it/common/d_log_lib",          # All common log management library
+    "it/dibonit_itt/d_cry_srv",     # Encryption services/library
+
+    # MANUFACTURING
+    "manuf/dibonit_mes_app",        # A Manufacturing Execution Software
+    # SHOPFLOORS
+    "manuf/shopfloors/d_aut_app",   # An automation software that handles manufacturing tools
+    "manuf/shopfloors/d_fac_app",   # A software that handles facilities PLCs, supervisions
+    "manuf/shopfloors/d_flw_app",   # An application that handles production flows, production lines
+
+    # PROCESS
+    "manuf/d_flw_app",              # An application that handles production flows
+
+    # MAINTENANCE
+    "manuf/d_gmao_app",             # Maintenance (Gmao) application
+
+    # ENTERPRISE
+    "d_erp_app",                   # An Enterprise Resource Planning software
+    "d_msg_app",                   # A user message software who creates links between enterprise objects and talks
+    "d_drv_app",                   # A drive linked to enterprise objects
+]
+resolver = "2"
+
+# Optional: external dependencies
+[workspace.dependencies]
+# serde = "1.0"
+# tokio = { version = "1.0", features = ["full"] }

@@ -1,0 +1,12 @@
+gitignore
+# Ignoring targets folders
+target/
+
+# Ignoring generated Cargo.lock files
+Cargo.lock
+
+# Ignoring temporary files and caches
+*.rs.bk
+*.swp
+
+
