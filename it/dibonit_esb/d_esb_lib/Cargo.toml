@@ -1,0 +1,15 @@
+[package]
+name = "d_esb_lib"
+version = "0.1.0"
+edition = "2024"
+description = "A library to be used for softawre communication with the dibonit entreprise service bus"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+async-trait = "0.1"
+
+[dev-dependencies]
+#criterion = "0.5"
