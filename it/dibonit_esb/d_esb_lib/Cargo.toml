@@ -8,6 +8,7 @@ description = "A library to be used for softawre communication with the dibonit 
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+bincode = "1"
 rand = "0.8"
 async-trait = "0.1"
 

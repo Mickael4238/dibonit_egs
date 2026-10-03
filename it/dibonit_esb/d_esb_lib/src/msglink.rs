@@ -9,11 +9,21 @@
 //  simpler than TCP localhost. The filesystem already restricts who may
 //  connect via socket file permissions (0o600).
 //
+//  Codec: pluggable via the `Codec` enum, negotiated per-connection.
+//    - Json:   serde_json frames. Portable, debuggable, but Vec<u8> fields
+//              are base64-encoded (+33% size) — the slowest mode.
+//    - Bincode: serde + bincode. Compact binary, near-zero changes to the
+//              protocol code, Rust-to-Rust only.
+//    - Raw:    hand-written binary encoding (1 tag byte + length-prefixed
+//              fields). Fastest and dependency-free for the payload path;
+//              you own the format versioning.
+//  Both peers must use the same codec on a given connection; it is set at
+//  bind/connect time (Server::bind_with / Client::connect_with). The JSON
+//  default (Server::bind / Client::connect) is kept for compatibility.
+//
 //  Authentication: name + password verified by a server-side callback
-//  (store hashes, see the argon2 example in the `Verifier` docs below).
+//  (store hashes, see the argon2 example in the `Handler` docs below).
 //  SSH keys are not used here: they suit humans, not machine-to-machine IPC.
-//  For a networked deployment, swap in a TLS/mTLS handshake or an HMAC
-//  challenge-response (extension point noted in the code).
 //
 //  Authorization: after authentication, srv issues a 256-bit random session
 //  token tied to the connection, with a TTL. Every subsequent message must
@@ -26,7 +36,7 @@
 //  messages. srv can also initiate requests towards a connected app
 //  (Ctx::get_from / multi-hop test below).
 //
-//  Protocol (JSON frames, 4-byte big-endian length prefix):
+//  Protocol (frames = 4-byte big-endian length + codec payload):
 //
 //    app  -> srv : Hello { name, password }
 //    srv  -> app : Welcome { contracts, token }   | Error { reason }
@@ -43,6 +53,7 @@
 //    tokio = { version = "1", features = ["full"] }
 //    serde = { version = "1", features = ["derive"] }
 //    serde_json = "1"
+//    bincode = "1"
 //    rand = "0.8"
 //    async-trait = "0.1"
 //
@@ -51,7 +62,8 @@
 //    // srv.rs
 //    #[tokio::main]
 //    async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//        let server = msglink::Server::bind("/tmp/msglink.sock").await?;
+//        let server = msglink::Server::bind_with("/tmp/msglink.sock",
+//            msglink::Codec::Bincode).await?;
 //        server.run(MyHandler::new()).await?;     // accept loop
 //        Ok(())
 //    }
@@ -59,8 +71,8 @@
 //    // app1.rs
 //    #[tokio::main]
 //    async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//        let (conn, contracts) = msglink::Client::connect("/tmp/msglink.sock",
-//            "app1", "s3cret", None).await?;  // Err if srv is not running
+//        let (conn, contracts) = msglink::Client::connect_with("/tmp/msglink.sock",
+//            "app1", "s3cret", None, msglink::Codec::Bincode).await?;
 //        conn.get("weather", "req-1").await?; // -> Ack then Give
 //        Ok(())
 //    }
@@ -80,7 +92,8 @@ use tokio::sync::{mpsc, Mutex};
 pub const SESSION_TTL_SECS: u64 = 3600;
 
 /// Timeout for waiting on a remote answer (Ack/Give/Published).
-const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
+/// Large-payload benchmarks must run in release mode to stay under it.
+const REPLY_TIMEOUT: Duration = Duration::from_secs(60);
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -148,8 +161,12 @@ impl Token {
     }
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+// No #[serde(tag = "type")]: internally-tagged enums force serde to call
+// deserialize_any (peek the tag field first), which bincode does not
+// support — a Bincode peer would fail to decode the very first Hello.
+// The default externally-tagged representation ({"Hello":{...}}) works
+// for both serde_json and bincode.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Message {
     /// app -> srv: connection request.
     Hello { name: String, password: String },
@@ -169,24 +186,219 @@ pub enum Message {
     Published { id_request: String },
 }
 
-// --- frames: 4 BE length bytes + JSON --------------------------------------
+// ---------------------------------------------------------------------------
+// Codec: pluggable wire format (Json / Bincode / Raw)
+// ---------------------------------------------------------------------------
 
-async fn send_msg<S: AsyncWriteExt + Unpin>(s: &mut S, m: &Message) -> Result<()> {
-    let json =
-        serde_json::to_vec(m).map_err(|e| Error::Protocol(format!("serialize: {e}")))?;
-    s.write_all(&(json.len() as u32).to_be_bytes()).await?;
-    s.write_all(&json).await?;
+/// Wire format used on a connection. Both peers must agree; there is no
+/// in-band negotiation (that would leak the choice before authentication).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Codec {
+    /// serde_json text frames. Portable, human-readable, but Vec<u8> fields
+    /// are base64-encoded (+33% size + encode/decode cost). Default.
+    Json,
+    /// serde + bincode binary frames. Compact, no base64, Rust-to-Rust.
+    Bincode,
+    /// Hand-written binary encoding: 1 tag byte + length-prefixed fields.
+    /// Fastest, no serde on the hot path, but the format is versioned by
+    /// this lib only.
+    Raw,
+}
+
+impl Codec {
+    pub fn encode(&self, m: &Message) -> Result<Vec<u8>> {
+        match self {
+            Codec::Json => serde_json::to_vec(m)
+                .map_err(|e| Error::Protocol(format!("serialize: {e}"))),
+            Codec::Bincode => bincode::serialize(m)
+                .map_err(|e| Error::Protocol(format!("serialize: {e}"))),
+            Codec::Raw => Ok(raw_encode(m)),
+        }
+    }
+
+    pub fn decode(&self, b: &[u8]) -> Result<Message> {
+        match self {
+            Codec::Json => serde_json::from_slice(b)
+                .map_err(|e| Error::Protocol(format!("deserialize: {e}"))),
+            Codec::Bincode => bincode::deserialize(b)
+                .map_err(|e| Error::Protocol(format!("deserialize: {e}"))),
+            Codec::Raw => raw_decode(b),
+        }
+    }
+}
+
+// --- Raw codec: tag byte + length-prefixed (u32 BE) fields -----------------
+
+mod raw {
+    pub const HELLO: u8 = 1;
+    pub const WELCOME: u8 = 2;
+    pub const ERROR: u8 = 3;
+    pub const GET: u8 = 4;
+    pub const ACK: u8 = 5;
+    pub const GIVE: u8 = 6;
+    pub const PUBLISH: u8 = 7;
+    pub const PUBLISHED: u8 = 8;
+}
+
+fn put_bytes(out: &mut Vec<u8>, b: &[u8]) {
+    out.extend_from_slice(&(b.len() as u32).to_be_bytes());
+    out.extend_from_slice(b);
+}
+
+fn put_str(out: &mut Vec<u8>, s: &str) {
+    put_bytes(out, s.as_bytes());
+}
+
+struct Cur<'a> {
+    b: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Cur<'a> {
+    fn new(b: &'a [u8]) -> Self {
+        Cur { b, pos: 0 }
+    }
+
+    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
+        if self.pos + n > self.b.len() {
+            return Err(Error::Protocol("raw frame truncated".into()));
+        }
+        let s = &self.b[self.pos..self.pos + n];
+        self.pos += n;
+        Ok(s)
+    }
+
+    fn u8(&mut self) -> Result<u8> {
+        Ok(self.take(1)?[0])
+    }
+
+    fn u32(&mut self) -> Result<u32> {
+        Ok(u32::from_be_bytes(self.take(4)?.try_into().unwrap()))
+    }
+
+    fn bytes(&mut self) -> Result<Vec<u8>> {
+        let n = self.u32()? as usize;
+        Ok(self.take(n)?.to_vec())
+    }
+
+    fn string(&mut self) -> Result<String> {
+        let v = self.bytes()?;
+        String::from_utf8(v).map_err(|e| Error::Protocol(format!("utf8: {e}")))
+    }
+
+    fn token(&mut self) -> Result<Token> {
+        Ok(Token(self.string()?))
+    }
+
+    fn done(&self) -> Result<()> {
+        if self.pos != self.b.len() {
+            return Err(Error::Protocol("raw frame has trailing bytes".into()));
+        }
+        Ok(())
+    }
+}
+
+fn raw_encode(m: &Message) -> Vec<u8> {
+    let mut out = Vec::new();
+    match m {
+        Message::Hello { name, password } => {
+            out.push(raw::HELLO);
+            put_str(&mut out, name);
+            put_str(&mut out, password);
+        }
+        Message::Welcome { contracts, token } => {
+            out.push(raw::WELCOME);
+            out.extend_from_slice(&(contracts.len() as u32).to_be_bytes());
+            for c in contracts {
+                put_str(&mut out, c);
+            }
+            put_str(&mut out, token.as_str());
+        }
+        Message::Error { reason } => {
+            out.push(raw::ERROR);
+            put_str(&mut out, reason);
+        }
+        Message::Get { contract, id_request, token } => {
+            out.push(raw::GET);
+            put_str(&mut out, contract);
+            put_str(&mut out, id_request);
+            put_str(&mut out, token.as_str());
+        }
+        Message::Ack { id_request } => {
+            out.push(raw::ACK);
+            put_str(&mut out, id_request);
+        }
+        Message::Give { id_request, data } => {
+            out.push(raw::GIVE);
+            put_str(&mut out, id_request);
+            put_bytes(&mut out, data);
+        }
+        Message::Publish { contract, id_request, token } => {
+            out.push(raw::PUBLISH);
+            put_str(&mut out, contract);
+            put_str(&mut out, id_request);
+            put_str(&mut out, token.as_str());
+        }
+        Message::Published { id_request } => {
+            out.push(raw::PUBLISHED);
+            put_str(&mut out, id_request);
+        }
+    }
+    out
+}
+
+fn raw_decode(b: &[u8]) -> Result<Message> {
+    let mut c = Cur::new(b);
+    let m = match c.u8()? {
+        raw::HELLO => Message::Hello { name: c.string()?, password: c.string()? },
+        raw::WELCOME => {
+            let n = c.u32()? as usize;
+            let mut contracts = Vec::with_capacity(n);
+            for _ in 0..n {
+                contracts.push(c.string()?);
+            }
+            Message::Welcome { contracts, token: c.token()? }
+        }
+        raw::ERROR => Message::Error { reason: c.string()? },
+        raw::GET => Message::Get {
+            contract: c.string()?,
+            id_request: c.string()?,
+            token: c.token()?,
+        },
+        raw::ACK => Message::Ack { id_request: c.string()? },
+        raw::GIVE => Message::Give { id_request: c.string()?, data: c.bytes()? },
+        raw::PUBLISH => Message::Publish {
+            contract: c.string()?,
+            id_request: c.string()?,
+            token: c.token()?,
+        },
+        raw::PUBLISHED => Message::Published { id_request: c.string()? },
+        t => return Err(Error::Protocol(format!("unknown raw tag {t}"))),
+    };
+    c.done()?;
+    Ok(m)
+}
+
+// --- frames: 4 BE length bytes + codec payload ------------------------------
+
+async fn send_frame<S: AsyncWriteExt + Unpin>(
+    s: &mut S,
+    codec: Codec,
+    m: &Message,
+) -> Result<()> {
+    let payload = codec.encode(m)?;
+    s.write_all(&(payload.len() as u32).to_be_bytes()).await?;
+    s.write_all(&payload).await?;
     s.flush().await?;
     Ok(())
 }
 
-async fn recv_msg<S: AsyncReadExt + Unpin>(s: &mut S) -> Result<Message> {
+async fn recv_frame<S: AsyncReadExt + Unpin>(s: &mut S, codec: Codec) -> Result<Message> {
     let mut len = [0u8; 4];
     s.read_exact(&mut len).await?;
     let mut buf = vec![0u8; u32::from_be_bytes(len) as usize];
     s.read_exact(&mut buf).await?;
-    serde_json::from_slice(&buf)
-        .map_err(|e| Error::Protocol(format!("deserialize: {e}")))
+    codec.decode(&buf)
 }
 
 /// Waits for the next message on a pending channel, with timeout.
@@ -299,13 +511,12 @@ impl Broker {
         res
     }
 
-    /// Route an answer (Ack/Give/Published/Error) coming from a client
+    /// Route an answer (Ack/Give/Published) coming from a client
     /// to the pending server-initiated request with the same id_request,
-    /// if any. Error frames carry no id, so they are broadcast to every
-    /// pending request. Unknown answers are silently dropped.
+    /// if any. Error frames carry no id_request: they are broadcast to
+    /// every pending request so `get_from` fails fast instead of timing
+    /// out. Unknown answers are silently dropped.
     async fn route_answer(&self, msg: &Message) {
-        // Give/Published terminate the exchange; Ack just passes through.
-        let terminal = !matches!(msg, Message::Ack { .. });
         if let Message::Error { reason } = msg {
             // Broadcast the error to all pending requests, then clear.
             let map = self.pending.lock().await;
@@ -316,12 +527,14 @@ impl Broker {
             self.pending.lock().await.clear();
             return;
         }
-        let id = match &msg {
+        let id = match msg {
             Message::Ack { id_request }
             | Message::Give { id_request, .. }
             | Message::Published { id_request } => id_request.clone(),
             _ => return,
         };
+        // Give/Published terminate the exchange; Ack just passes through.
+        let terminal = !matches!(msg, Message::Ack { .. });
         let map = self.pending.lock().await;
         if let Some(tx) = map.get(&id) {
             let _ = tx.send(msg.clone());
@@ -380,12 +593,18 @@ pub struct Server {
     path: PathBuf,
     listener: UnixListener,
     broker: Arc<Broker>,
+    codec: Codec,
 }
 
 impl Server {
-    /// Creates the socket. Removes a stale socket file left by a previous
-    /// srv that died abruptly before binding.
+    /// Creates the socket with the JSON codec (compatibility default).
     pub async fn bind<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::bind_with(path, Codec::Json).await
+    }
+
+    /// Creates the socket with an explicit wire codec. Removes a stale
+    /// socket file left by a previous srv that died abruptly.
+    pub async fn bind_with<P: AsRef<Path>>(path: P, codec: Codec) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         if path.exists() {
             tokio::fs::remove_file(&path).await?;
@@ -403,6 +622,7 @@ impl Server {
                 writers: Mutex::new(HashMap::new()),
                 pending: Mutex::new(HashMap::new()),
             }),
+            codec,
         })
     }
 
@@ -415,10 +635,11 @@ impl Server {
             };
             let broker = self.broker.clone();
             let handler = handler.clone();
+            let codec = self.codec;
             // One task per connection: requests are processed in parallel
             // without blocking each other or losing messages.
             tokio::spawn(async move {
-                if let Err(e) = handle_conn(stream, handler, broker).await {
+                if let Err(e) = handle_conn(stream, handler, broker, codec).await {
                     eprintln!("[srv] connection closed: {e}");
                 }
             });
@@ -435,6 +656,7 @@ async fn handle_conn<H: Handler>(
     stream: UnixStream,
     handler: Arc<H>,
     broker: Arc<Broker>,
+    codec: Codec,
 ) -> Result<()> {
     // Split the socket: the read half stays in this task, the write half is
     // owned by a dedicated writer task. This way responses, error frames and
@@ -444,14 +666,14 @@ async fn handle_conn<H: Handler>(
     tokio::spawn(async move {
         let mut write_half = write_half;
         while let Some(msg) = wrx.recv().await {
-            if send_msg(&mut write_half, &msg).await.is_err() {
+            if send_frame(&mut write_half, codec, &msg).await.is_err() {
                 break;
             }
         }
     });
 
     // 1) Authentication. No Hello => disconnect.
-    let (name, password) = match recv_msg(&mut read_half).await? {
+    let (name, password) = match recv_frame(&mut read_half, codec).await? {
         Message::Hello { name, password } => (name, password),
         _ => {
             let _ = wtx
@@ -489,7 +711,7 @@ async fn handle_conn<H: Handler>(
 
     // 3) Service loop. The token is checked BEFORE any processing.
     loop {
-        let req = match recv_msg(&mut read_half).await {
+        let req = match recv_frame(&mut read_half, codec).await {
             Ok(m) => m,
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // clean disconnect
@@ -504,7 +726,11 @@ async fn handle_conn<H: Handler>(
 
         match &req {
             // Answers to server-initiated requests: route to the issuer.
-            Message::Ack { .. } | Message::Give { .. } | Message::Published { .. } => {
+            // Error frames too (an app may fail to serve our request).
+            Message::Ack { .. }
+            | Message::Give { .. }
+            | Message::Published { .. }
+            | Message::Error { .. } => {
                 broker.route_answer(&req).await;
                 continue;
             }
@@ -534,14 +760,12 @@ async fn handle_conn<H: Handler>(
             }
         }
 
-        let (contract, id_request) = match &req {
-            Message::Get { contract, id_request, .. }
-            | Message::Publish { contract, id_request, .. } => (contract, id_request),
-            _ => unreachable!(),
-        };
-
+        // Single consuming match: destructuring happens here, directly in
+        // the arms. A separate `let (contract, id_request) = match req {...}`
+        // before this block would partially move the fields out of `req`
+        // and make this second `match req` a use-after-move (E0382).
         match req {
-            Message::Get { .. } => {
+            Message::Get { contract, id_request, .. } => {
                 // Ack(id_request) then Give(id_request, data)
                 let _ = wtx
                     .send(Message::Ack { id_request: id_request.clone() })
@@ -549,14 +773,14 @@ async fn handle_conn<H: Handler>(
                 let ctx = Ctx { broker: broker.clone() };
                 match handler.get(&ctx, &name, &contract, &id_request).await {
                     Ok(data) => {
-                        let _ = wtx.send(Message::Give { id_request: id_request.clone() , data }).await;
+                        let _ = wtx.send(Message::Give { id_request, data }).await;
                     }
                     Err(reason) => {
                         let _ = wtx.send(Message::Error { reason }).await;
                     }
                 }
             }
-            Message::Publish { .. } => {
+            Message::Publish { contract, id_request, .. } => {
                 // Ack(id_request) then Published(id_request)
                 let _ = wtx
                     .send(Message::Ack { id_request: id_request.clone() })
@@ -564,7 +788,7 @@ async fn handle_conn<H: Handler>(
                 let ctx = Ctx { broker: broker.clone() };
                 match handler.publish(&ctx, &name, &contract, &id_request).await {
                     Ok(()) => {
-                        let _ = wtx.send(Message::Published {  id_request: id_request.clone() }).await;
+                        let _ = wtx.send(Message::Published { id_request }).await;
                     }
                     Err(reason) => {
                         let _ = wtx.send(Message::Error { reason }).await;
@@ -605,17 +829,30 @@ pub struct Client {
 }
 
 impl Client {
-    /// Connects and authenticates (Hello), then checks the reply.
-    /// - Err(NotRunning): srv is not running / socket unreachable.
-    /// - Err(Auth): credentials rejected.
-    /// `server_handler` lets the app serve srv-initiated requests too
-    /// (multi-hop scenario); pass None for a pure client.
-    /// Ok: (client, contracts) — the token is already managed by the lib.
+    /// Connects and authenticates with the JSON codec (compatibility
+    /// default). See `connect_with` for an explicit codec.
     pub async fn connect<P: AsRef<Path>>(
         path: P,
         name: &str,
         password: &str,
         server_handler: Option<Arc<dyn ClientHandler>>,
+    ) -> Result<(Self, Vec<String>)> {
+        Self::connect_with(path, name, password, server_handler, Codec::Json).await
+    }
+
+    /// Connects and authenticates (Hello), then checks the reply.
+    /// - Err(NotRunning): srv is not running / socket unreachable.
+    /// - Err(Auth): credentials rejected.
+    /// `server_handler` lets the app serve srv-initiated requests too
+    /// (multi-hop scenario); pass None for a pure client.
+    /// `codec` must match the codec given to `Server::bind_with`.
+    /// Ok: (client, contracts) — the token is already managed by the lib.
+    pub async fn connect_with<P: AsRef<Path>>(
+        path: P,
+        name: &str,
+        password: &str,
+        server_handler: Option<Arc<dyn ClientHandler>>,
+        codec: Codec,
     ) -> Result<(Self, Vec<String>)> {
         let stream = UnixStream::connect(path).await?; // NotRunning on failure
         let (mut read_half, write_half) = stream.into_split();
@@ -626,7 +863,7 @@ impl Client {
         tokio::spawn(async move {
             let mut write_half = write_half;
             while let Some(msg) = wrx.recv().await {
-                if send_msg(&mut write_half, &msg).await.is_err() {
+                if send_frame(&mut write_half, codec, &msg).await.is_err() {
                     break;
                 }
             }
@@ -639,7 +876,7 @@ impl Client {
         .await
         .map_err(|_| Error::Protocol("server vanished during handshake".into()))?;
 
-        let (token, contracts) = match recv_msg(&mut read_half).await? {
+        let (token, contracts) = match recv_frame(&mut read_half, codec).await? {
             Message::Welcome { contracts, token } => (token, contracts),
             Message::Error { reason } => return Err(Error::Auth(reason)),
             _ => return Err(Error::Protocol("Welcome or Error expected".into())),
@@ -659,7 +896,7 @@ impl Client {
         let responder = wtx.clone();
         tokio::spawn(async move {
             loop {
-                match recv_msg(&mut read_half).await {
+                match recv_frame(&mut read_half, codec).await {
                     Ok(Message::Get { contract, id_request, token })
                         if token == my_token =>
                     {
@@ -715,25 +952,20 @@ impl Client {
                         }
                     }
                     // Answers to our own requests: forward to the pending
-                    // channel of the matching id_request.
+                    // channel of the matching id_request. Error frames carry
+                    // no id_request: broadcast to every pending request.
+                    Ok(Message::Error { reason }) => {
+                        let map = pending.lock().await;
+                        for (_, ch) in map.iter() {
+                            let _ = ch.send(Message::Error { reason: reason.clone() });
+                        }
+                        drop(map);
+                        pending.lock().await.clear();
+                    }
                     Ok(msg @ (Message::Ack { .. }
                     | Message::Give { .. }
-                    | Message::Published { .. }
-                    | Message::Error { .. })) =>
+                    | Message::Published { .. })) =>
                     {
-                        // Error frames carry no id: broadcast to every
-                        // pending request and clear the map.
-                        if let Message::Error { reason } = &msg {
-                            let map = pending.lock().await;
-                            for (_, ch) in map.iter() {
-                                let _ = ch.send(Message::Error {
-                                    reason: reason.clone(),
-                                });
-                            }
-                            drop(map);
-                            pending.lock().await.clear();
-                            continue;
-                        }
                         let id = match &msg {
                             Message::Ack { id_request }
                             | Message::Give { id_request, .. }
@@ -850,12 +1082,15 @@ impl Client {
 }
 
 // ---------------------------------------------------------------------------
-// Integration tests: two apps, concurrency, multi-hop request routing.
+// Integration tests: two apps, concurrency, multi-hop routing, and
+// per-codec performance benchmarks logged to a CSV file.
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::time::Instant;
 
     // ------------------------------------------------------------------
     // Server handler: answers directly for contract "weather", but for
@@ -924,6 +1159,106 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Bench handler: serves `count` sized payloads on contract "bench".
+    // ------------------------------------------------------------------
+    struct BenchHandler {
+        size: usize,
+    }
+
+    #[async_trait]
+    impl Handler for BenchHandler {
+        fn verify(&self, name: &str, password: &str) -> bool {
+            name == "app1" && password == "s3cret"
+        }
+        fn contracts(&self) -> Vec<String> {
+            vec!["bench".into()]
+        }
+        async fn get(
+            &self,
+            _ctx: &Ctx,
+            _caller: &str,
+            _contract: &str,
+            _id_request: &str,
+        ) -> std::result::Result<Vec<u8>, String> {
+            Ok(vec![0u8; self.size])
+        }
+        async fn publish(
+            &self,
+            _ctx: &Ctx,
+            _caller: &str,
+            _contract: &str,
+            _id_request: &str,
+        ) -> std::result::Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// CSV file where every benchmark appends one line:
+    ///   codec,msg_count,msg_size_bytes,total_time_ms,msgs_per_sec,mb_per_sec
+    fn bench_csv_path() -> std::path::PathBuf {
+        std::env::temp_dir().join("msglink-bench.csv")
+    }
+
+    /// Appends one benchmark result row to the CSV, creating the file with
+    /// its header if needed.
+    fn append_bench_csv(codec: Codec, count: usize, size: usize, elapsed: std::time::Duration) {
+        let path = bench_csv_path();
+        let is_new = !path.exists();
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .expect("open bench csv");
+        if is_new {
+            writeln!(f, "codec,msg_count,msg_size_bytes,total_time_ms,msgs_per_sec,mb_per_sec")
+                .expect("write header");
+        }
+        let secs = elapsed.as_secs_f64();
+        let msgs_per_sec = count as f64 / secs;
+        let mb_per_sec = (count as f64 * size as f64) / secs / (1024.0 * 1024.0);
+        writeln!(
+            f,
+            "{codec:?},{count},{size},{},{msgs_per_sec:.1},{mb_per_sec:.1}",
+            elapsed.as_millis()
+        )
+        .expect("write row");
+    }
+
+    /// Runs one benchmark scenario: full Get/Give round-trips of `size`-byte
+    /// payloads, `count` times, on the given codec. Returns total time.
+    async fn bench_roundtrip(codec: Codec, count: usize, size: usize, tag: &str)
+        -> std::time::Duration {
+        let sock = std::env::temp_dir().join(format!("msglink-bench-{tag}.sock"));
+        let server = Server::bind_with(&sock, codec).await.unwrap();
+        tokio::spawn(server.run(Arc::new(BenchHandler { size })));
+
+        let (mut client, contracts) =
+            Client::connect_with(&sock, "app1", "s3cret", None, codec).await.unwrap();
+        assert_eq!(contracts, vec!["bench".to_string()]);
+
+        // Warmup round-trip so handshake allocations do not pollute the
+        // measurement (real benchmarks should also use --release).
+        client.get("bench", "warmup").await.unwrap();
+
+        let start = Instant::now();
+        for i in 0..count {
+            let data = client.get("bench", &format!("b{i}")).await.unwrap();
+            assert_eq!(data.len(), size);
+        }
+        start.elapsed()
+    }
+
+    /// Runs the scenario and logs it to the CSV.
+    async fn run_bench(codec: Codec, count: usize, size: usize, tag: &str) {
+        let elapsed = bench_roundtrip(codec, count, size, tag).await;
+        append_bench_csv(codec, count, size, elapsed);
+    }
+
+    // ------------------------------------------------------------------
+    // Correctness tests (JSON default, unchanged behavior).
+    // ------------------------------------------------------------------
+
     #[tokio::test]
     async fn bad_credentials_are_rejected() {
         let sock = std::env::temp_dir().join("msglink-auth.sock");
@@ -968,12 +1303,73 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
+    // Correctness tests for the non-default codecs: the full flow must
+    // behave identically on Bincode and Raw.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn bincode_codec_full_flow() {
+        let sock = std::env::temp_dir().join("msglink-bincode.sock");
+        let server = Server::bind_with(&sock, Codec::Bincode).await.unwrap();
+        tokio::spawn(server.run(Arc::new(RelayHandler)));
+
+        let (mut c, contracts) = Client::connect_with(
+            &sock, "app1", "s3cret", None, Codec::Bincode,
+        )
+        .await
+        .unwrap();
+        assert_eq!(contracts.len(), 3);
+        assert_eq!(c.get("weather", "req-1").await.unwrap(), b"22C".to_vec());
+        c.publish("weather", "req-2").await.unwrap();
+
+        // Forged token must still be rejected under Bincode.
+        c.token = Token("deadbeef".into());
+        assert!(c.get("weather", "req-3").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn raw_codec_full_flow() {
+        let sock = std::env::temp_dir().join("msglink-raw.sock");
+        let server = Server::bind_with(&sock, Codec::Raw).await.unwrap();
+        tokio::spawn(server.run(Arc::new(RelayHandler)));
+
+        let (mut c, contracts) = Client::connect_with(
+            &sock, "app1", "s3cret", None, Codec::Raw,
+        )
+        .await
+        .unwrap();
+        assert_eq!(contracts.len(), 3);
+        assert_eq!(c.get("weather", "req-1").await.unwrap(), b"22C".to_vec());
+        c.publish("weather", "req-2").await.unwrap();
+
+        // Binary data through the raw codec (no base64 involved).
+        let data = c.get("weather", "req-4").await.unwrap();
+        assert_eq!(data, b"22C".to_vec());
+    }
+
+    /// Raw codec: decode must reject truncated frames and trailing bytes.
+    #[test]
+    fn raw_codec_rejects_malformed_frames() {
+        let good = raw_encode(&Message::Ack { id_request: "abc".into() });
+        assert!(matches!(raw_decode(&good), Ok(Message::Ack { .. })));
+        // Truncated
+        assert!(raw_decode(&good[..good.len() - 1]).is_err());
+        // Trailing bytes
+        let mut trailing = good.clone();
+        trailing.push(0);
+        assert!(raw_decode(&trailing).is_err());
+        // Unknown tag
+        assert!(raw_decode(&[0xFF, 0, 0, 0, 0]).is_err());
+    }
+
+    // ------------------------------------------------------------------
     // Main scenario required: srv running, app1 connects, app2 connects.
     // app1 calls get() on contract "relay"; srv catches it and issues its
     // OWN get() to app2; app2 answers srv; srv returns that same data to
     // app1. srv handles both connections concurrently, without losing
     // messages. A parallel get() from app2 proves requests interleave.
     // ------------------------------------------------------------------
+
     #[tokio::test]
     async fn two_apps_multi_hop_get() {
         let sock = std::env::temp_dir().join("msglink-multi.sock");
@@ -1004,18 +1400,13 @@ mod tests {
             app2.get("weather", "req-b").await.map(|d| d.len())
         });
 
-        // Multi-hop result: app1 receives app2's data through srv.
-        let data = {
-            // reconnect-free check: h1 returns the length; redo is not
-            // possible after move, so assert lengths and check the id.
-            h1.await.unwrap().unwrap()
-        };
-        let direct = h2.await.unwrap().unwrap();
-        assert_eq!(direct, 3); // "22C"
+        let relayed_len = h1.await.unwrap().unwrap();
+        let direct_len = h2.await.unwrap().unwrap();
+        assert_eq!(direct_len, 3); // "22C"
         // "data-from-app2(hop-req-a)"
-        assert_eq!(data, format!("data-from-app2(hop-req-a)").len());
+        assert_eq!(relayed_len, format!("data-from-app2(hop-req-a)").len());
 
-        // Also verify the exact payload: rerun a full exchange.
+        // Also verify the exact payload with a fresh connection.
         let (mut app1b, _) =
             Client::connect(&sock, "app1", "s3cret", None).await.unwrap();
         let got = app1b.get("relay", "req-c").await.unwrap();
@@ -1029,6 +1420,7 @@ mod tests {
     // Concurrency: many parallel requests across both apps, no message
     // lost and no id_request mix-up.
     // ------------------------------------------------------------------
+
     #[tokio::test]
     async fn parallel_requests_no_loss() {
         let sock = std::env::temp_dir().join("msglink-parallel.sock");
@@ -1072,5 +1464,83 @@ mod tests {
                 assert_eq!(data, b"22C".to_vec());
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Performance benchmarks. Each one appends one row to
+    // $TMPDIR/msglink-bench.csv with the test condition and the total
+    // execution time. Run with `cargo test --release` for meaningful
+    // numbers (debug builds measure the test harness, not the codec).
+    //
+    // Small payloads: 1000 round-trips of 50-byte messages, one test per
+    // codec. These run by default: fast enough and they exercise the
+    // request/response hot path.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn bench_json_1000x50b() {
+        run_bench(Codec::Json, 5000, 10000, "json-small").await;
+    }
+
+    #[tokio::test]
+    async fn bench_bincode_1000x50b() {
+        run_bench(Codec::Bincode, 5000, 10000, "bincode-small").await;
+    }
+
+    #[tokio::test]
+    async fn bench_raw_1000x50b() {
+        run_bench(Codec::Raw, 5000, 10000, "raw-small").await;
+    }
+    /* results tests .... very small messages are quite the same but raw get mush better on bigger messages
+    codec	msg_count	msg_size_bytes	total_time_ms	msgs_per_sec	mb_per_sec
+    Raw	1000	50	35	28538.7	1.4
+    Json	1000	50	63	15832.7	0.8
+    Raw	1000	50	40	24845	1.2
+    Bincode	1000	50	48	20742.8	1
+    Json	1000	50	55	18036.2	0.9
+    Raw	1000	50	41	24001.1	1.1
+    Bincode	1000	50	50	19746.6	0.9
+    Json	1000	50	58	17211.7	0.8
+    Raw	5000	100	171	29208.9	2.8
+    Bincode	5000	100	254	19641.6	1.9
+    Json	5000	100	284	17567.6	1.7
+    Raw	5000	1000	176	28325.4	27
+    Bincode	5000	1000	641	7799.4	7.4
+    Json	5000	1000	854	5854.6	5.6
+    Raw	5000	10000	184	27112.3	258.6
+    Bincode	5000	10000	4437	1126.7	10.7
+    Json	5000	10000	6190	807.6	7.7
+*/
+
+    // ------------------------------------------------------------------
+    // Large payloads: 30 round-trips of 300 MB messages, one test per
+    // codec. Marked #[ignore] because:
+    //  - in debug mode this takes many minutes per codec;
+    //  - it pushes ~9 GB through the socket per test (plus base64
+    //    overhead for JSON: ~12 GB);
+    //  - CI should not pay that cost on every `cargo test`.
+    // Run them explicitly with:
+    //    cargo test --release -- --ignored bench_large
+    // ------------------------------------------------------------------
+
+    const LARGE_MSG_BYTES: usize = 300 * 1024 * 1024; // 300 MB
+    const LARGE_MSG_COUNT: usize = 30;
+
+    #[tokio::test]
+    #[ignore = "very slow (9 GB+ per codec); run with cargo test --release -- --ignored bench_large"]
+    async fn bench_json_large_30x300mb() {
+        run_bench(Codec::Json, LARGE_MSG_COUNT, LARGE_MSG_BYTES, "json-large").await;
+    }
+
+    #[tokio::test]
+    #[ignore = "very slow (9 GB+ per codec); run with cargo test --release -- --ignored bench_large"]
+    async fn bench_bincode_large_30x300mb() {
+        run_bench(Codec::Bincode, LARGE_MSG_COUNT, LARGE_MSG_BYTES, "bincode-large").await;
+    }
+
+    #[tokio::test]
+    #[ignore = "very slow (9 GB+ per codec); run with cargo test --release -- --ignored bench_large"]
+    async fn bench_raw_large_30x300mb() {
+        run_bench(Codec::Raw, LARGE_MSG_COUNT, LARGE_MSG_BYTES, "raw-large").await;
     }
 }
