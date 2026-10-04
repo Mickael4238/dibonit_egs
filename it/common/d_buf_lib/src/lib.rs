@@ -1,6 +1,6 @@
 use std::fmt;
 use std::string::FromUtf8Error;
-use d_err::{DErr, DErrMap};
+use d_err_lib::{DErr, DErrMap};
 
 /// A specialized `Result` type for operations in this module.
 ///
