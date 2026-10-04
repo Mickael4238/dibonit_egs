@@ -1,0 +1,11 @@
+
+a.w == b.w and (a.x > b.x or a.c <= b.c) and (a.x >= b.x and a.v != B.v and a.n < b.n)
+
+
+
+readToken
+ for each char
+     '(' => new child (readToken)
+*    ' ' => if token is empty next char else return token
+     ')' =>
+

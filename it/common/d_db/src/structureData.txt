@@ -1,0 +1,35 @@
+je veux modélier en rust une structure de data :
+
+
+key {
+i32,
+i64,
+}
+
+
+keyPtr{
+key,
+ptdData;
+}
+
+node{
+leaf :
+pointeurPrevFeuille
+min
+childrens[300]
+med
+keys[200];
+max
+pointeurNextFeuille
+
+}
+
+
+
+
+
+min
+*childrens[300]
+med
+keys[200];
+max
