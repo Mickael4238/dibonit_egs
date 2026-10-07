@@ -11,22 +11,25 @@ The DBuf consists of a **header** and **raw values**, both stored in a single `V
 ### Binary Layout
 
 ```
-[HEADER_SIZE: u8][DBUF_ID_SIZE: u8][DBUF_ID: [u8; DBUF_ID_SIZE]][COLUMN_COUNT: u8][COLUMN_1_ID: u8][COLUMN_1_TYPE: u8][COLUMN_1_SIZE: u8]...[ROW_COUNT: u8][ROW_CAPACITY: u8][ROW_SIZE: u8][RAW_VALUES...]
+[ROLLING_VERSION + COLUMN_COUNT: u8*2][BUFFER_ID: u8*2][COLUMN_1_ID + COLUMN_1_TYPE : u8*2][OPTIONAL COLUMN_1_SIZE: u8*2]...[ROW_COUNT: u8*2][ROW_CAPACITY: u8*2][ROW_SIZE: u8*2][RAW_VALUES...]
 ```
 
 #### Header Fields
+1. **Dbuf rolling version (2 bit)**: so a newer code can handle 3 previous version of the Dbuff header and data structure. 3 bit are not used.
+2. **Column Count (3 bit from 1st byte + 1 byte)**: Number of columns in this DBuf.(max 2048)
+3. **DBuf ID (variable)**: Unique identifier for this DBuf type. (2 byte)
+4. **Column Definitions**: For each column:
+   - Column ID (1 byte + 3 bit): Unique identifier for the column (replaces string names)
+   - Column Type (5 bit): Encoded type (U8, U16, U32, U64, I8, I16, I32, I64, F32, F64, Boolean, UtcTime, Char(Column Size),ASCII(Column Size)) (max 32 types)
+   - optional Column size (2 byte): Size of this column's data in each row. this field is only present when the Type is char or ASCII.
+5. **Row Count (2 byte)**: Current number of rows stored.
+6. **Row Capacity (2 byte)**: Maximum number of rows the buffer can hold.
 
-1. **Header Size (1 byte)**: Total size of the header in bytes. All offsets for data access must account for this.
-2. **DBuf ID Size (1 byte)**: Size in bytes of the DBuf identifier.
-3. **DBuf ID (variable)**: Unique identifier for this DBuf type. Size defined by previous field.
-4. **Column Count (1 byte)**: Number of columns in this DBuf.
-5. **Column Definitions**: For each column:
-   - Column ID (1 byte): Unique identifier for the column (replaces string names)
-   - Column Type (1 byte): Encoded type (U8, U16, U32, U64, I8, I16, I32, I64, F32, F64, Boolean, UtcTime, Char(n))
-   - Column Size (1 byte): Size in bytes of this column's data in each row
-6. **Row Count (1 byte)**: Current number of rows stored.
-7. **Row Capacity (1 byte)**: Maximum number of rows the buffer can hold.
-8. **Row Size (1 byte)**: Size in bytes of a single row.
+#### calculated variables 
+some useful information calculated from the above fields can be stored in variables outside the buffer for example: header size, row size.
+1. ** header size ** which can be used as an offset for getting the 1st row_value.
+2. ** row size ** which can be used as a multuplicator for going to next rows.
+developer may add others.
 
 #### Raw Values
 
@@ -35,8 +38,8 @@ All row data follows the header contiguously. Each row contains values for all c
 ## Key Features
 
 ### 1. Binary-Only IDs
-- Column names are replaced with `u8` IDs (0-255)
-- DBuf names are replaced with `u8` IDs
+- Column names are replaced with `u16` IDs (0-65235)
+- DBuf names are replaced with `u16` IDs
 - Eliminates string overhead and UTF-8 conversion errors
 - Enables direct binary comparison and faster lookups
 
@@ -71,7 +74,7 @@ These enums provide human-readable names while compiling to the underlying `u8` 
 
 | Type | ID | Size (bytes) |
 |------|----|--------------|
-| Boolean | 0 | 1 |
+| Boolean | 0 | 1 | note : 8 booleans should take 1 byte as well
 | U8 | 1 | 1 |
 | U16 | 2 | 2 |
 | U32 | 3 | 4 |
@@ -83,8 +86,8 @@ These enums provide human-readable names while compiling to the underlying `u8` 
 | F32 | 9 | 4 |
 | F64 | 10 | 8 |
 | UtcTime | 11 | 8 |
-| Char | 12 | variable (specified in column definition) |
-
+| Char | 12 | specified in Column Size
+| ASCII | 13 | specified in Column Size
 ## Functional Use Cases
 
 ### Nominal Cases
@@ -121,9 +124,9 @@ These enums provide human-readable names while compiling to the underlying `u8` 
    - Access operations on empty DBuf
 
 2. **Maximum Sizes**
-   - DBuf with maximum column count (255)
-   - DBuf with maximum row capacity (255)
-   - Column with maximum size (255 bytes for Char type)
+   - DBuf with maximum column count (2048)
+   - DBuf with maximum row capacity (65,536)
+   - Column with maximum size (65,536) bytes for Char type)
 
 3. **Single Element**
    - DBuf with one column
@@ -137,10 +140,6 @@ These enums provide human-readable names while compiling to the underlying `u8` 
 ## Error Cases
 
 ### Configuration Errors
-
-1. **Invalid DBuf ID**
-   - DBuf ID size is 0
-   - DBuf ID size exceeds remaining header space
 
 2. **Invalid Column Definition**
    - Duplicate column ID within a DBuf
@@ -163,11 +162,11 @@ These enums provide human-readable names while compiling to the underlying `u8` 
 1. **Header Corruption**
    - Header size doesn't match actual header bytes
    - Declared row count exceeds capacity
-   - Declared row size doesn't match sum of column sizes
+   
 
 2. **Type Mismatch**
    - Attempt to read column as wrong type
-   - Char type with size 0
+   - Char/ascii type with size 0
 
 3. **Buffer Overflow**
    - Raw values vector smaller than declared row count * row size
@@ -195,12 +194,12 @@ These enums provide human-readable names while compiling to the underlying `u8` 
 | Test ID | Description | Input | Expected Result |
 |---------|-------------|-------|-----------------|
 | E-001 | Zero capacity DBuf | capacity=0 | Success, empty DBuf |
-| E-002 | Maximum columns | 255 unique column IDs | Success |
-| E-003 | Maximum row capacity | capacity=255 | Success |
+| E-002 | Maximum columns | 2056 unique column IDs | Success |
+| E-003 | Maximum row capacity | capacity= 65,536| Success |
 | E-004 | Single column | 1 column | Success |
 | E-005 | Single row | capacity=1, add 1 row | Success |
 | E-006 | All column types | 1 column of each type | Success |
-| E-007 | Large Char column | Char(255) | Success |
+| E-007 | Large Char column | Char(65,536/4) | Success |
 | E-008 | Empty DBuf ID | DBuf ID size=0 | Success (if allowed) or Error |
 
 ### Error Case Tests
@@ -217,7 +216,7 @@ These enums provide human-readable names while compiling to the underlying `u8` 
 | ER-008 | Header size mismatch | Declared size != actual | Error: HeaderCorruption |
 | ER-009 | Row size mismatch | Declared != sum of columns | Error: RowSizeMismatch |
 | ER-010 | Buffer too small | row_count=10, but not enough bytes | Error: BufferOverflow |
-| ER-011 | Invalid DBuf ID size | size=255 (too large) | Error: InvalidDBufIdSize |
+| ER-011 | Invalid DBuf ID size | size=. 65,537 (too large) | Error: InvalidDBufIdSize |
 
 ## Implementation Guidelines
 
@@ -238,7 +237,7 @@ These enums provide human-readable names while compiling to the underlying `u8` 
 
 ## Design Rationale
 
-- **u8 IDs**: Limits to 255 unique DBufs and 255 columns per DBuf, but eliminates string overhead
 - **Header in raw_values**: Enables zero-copy transfer of complete DBuf state
-- **Fixed header size field**: Allows O(1) access to data section
-- **Explicit sizes**: All sizes are stored as u8, enabling direct binary manipulation
+- **calculated header size field**: Allows O(1) access to data section
+- **optional colomn size** remove unused bytes for numeric colons where the size is known by the Type.
+- **4 bit rolling version** allows code to work on older version of Dbuff structure when not all applications using the Dbuff had been migrated.
