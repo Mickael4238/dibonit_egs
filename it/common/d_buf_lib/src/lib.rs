@@ -1170,4 +1170,59 @@ mod tests {
         let column = ColumnHeader::new(2048, ColumnType::U8).unwrap_err();
         assert!(column.to_string().contains("ColumnIdExceeded"));
     }
+
+
+
+}
+#[cfg(test)]
+mod verbal_use_exemple {
+    use super::*;
+
+    pub enum User{
+        Nom,
+        Prenom,
+        DateNaissance,
+    }
+    impl User {
+        /// Get the type ID (0-13)
+        pub fn col_id(&self) -> u16 {
+            match self {
+                User::Nom => 0,
+                User::Prenom => 1,
+                User::DateNaissance => 2,
+            }
+        }
+        pub fn col_type(&self) -> ColumnType {
+            match self {
+                User::Nom => ColumnType::Char(12),     // 12 bytes = 12/4 = 3 chars
+                User::Prenom => ColumnType::Ascii(12), // 12 bytes = 12 ascii char
+                User::DateNaissance => ColumnType::UtcTime,
+            }
+        }
+        fn create_colunms_header() -> Vec<ColumnHeader> {
+            vec![
+                ColumnHeader::new(User::Nom.col_id(),            User::Nom.col_type()).unwrap(),
+                ColumnHeader::new(User::Prenom.col_id(),         User::Prenom.col_type()).unwrap(),
+                ColumnHeader::new(User::DateNaissance.col_id(),  User::DateNaissance.col_type()).unwrap(),
+            ]
+        }
+    }
+    pub enum Tables{
+        User,
+    }
+    impl Tables {
+        /// Get the type ID (0-13)
+        pub fn table_id(&self) -> u16 {
+            match self {
+                Tables::User => 1,
+            }
+        }
+    }
+    #[test]
+    fn test_verbal_exemple() {
+        let mut d_buf = DBuf::new(Tables::User.table_id(), User::create_colunms_header(), 10).unwrap();
+        let row_data = vec![1u8, 0, 1, 0, 0, 1, 0];
+        d_buf.add_rows(&row_data).unwrap();
+        assert_eq!(d_buf.header.row_count, 1);
+    }
 }
