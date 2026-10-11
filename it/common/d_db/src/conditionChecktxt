@@ -1,0 +1,21 @@
+"(id1 = 10 and id2 < 20) or ((id3 <= 30 and id4 != 40) or id5 > 50)";
+
+Or(
+ And(
+  Single(
+   KeyCondition {
+     condition_key: Key { col2: 10 }, condition_operator: Equal 
+   }
+  ),
+ Single(
+  KeyCondition { 
+    condition_key: Key { col2: 20 }, condition_operator: LowerThan 
+  }
+ )
+), 
+ Or(
+  And(
+   Single(KeyCondition { condition_key: Key { col2: 30 }, condition_operator: LowerThanOrEquals })
+   ,Single(KeyCondition { condition_key: Key { col2: 40 }, condition_operator: NotEqual })
+   )
+  ,Single(KeyCondition { condition_key: Key { col2: 50 }, condition_operator: GreaterThan })))

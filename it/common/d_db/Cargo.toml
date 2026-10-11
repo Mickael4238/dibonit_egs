@@ -1,0 +1,10 @@
+[package]
+name = "d_bd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+strum = "0.28.0"
+strum_macros = "0.28.0"
+d_err = { path = "../d_err" }
+d_buf = { path = "../d_buf" }
