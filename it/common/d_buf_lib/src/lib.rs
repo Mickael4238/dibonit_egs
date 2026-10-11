@@ -1176,12 +1176,13 @@ mod tests {
 }
 #[cfg(test)]
 mod verbal_use_exemple {
+    use std::borrow::Cow;
     use super::*;
 
     pub enum User{
         Nom,
         Prenom,
-        DateNaissance,
+        BirthYear,
     }
     impl User {
         /// Get the type ID (0-13)
@@ -1189,22 +1190,48 @@ mod verbal_use_exemple {
             match self {
                 User::Nom => 0,
                 User::Prenom => 1,
-                User::DateNaissance => 2,
+                User::BirthYear => 2,
             }
         }
         pub fn col_type(&self) -> ColumnType {
             match self {
                 User::Nom => ColumnType::Char(12),     // 12 bytes = 12/4 = 3 chars
                 User::Prenom => ColumnType::Ascii(12), // 12 bytes = 12 ascii char
-                User::DateNaissance => ColumnType::UtcTime,
+                User::BirthYear => ColumnType::U16,
             }
         }
         fn create_colunms_header() -> Vec<ColumnHeader> {
             vec![
                 ColumnHeader::new(User::Nom.col_id(),            User::Nom.col_type()).unwrap(),
                 ColumnHeader::new(User::Prenom.col_id(),         User::Prenom.col_type()).unwrap(),
-                ColumnHeader::new(User::DateNaissance.col_id(),  User::DateNaissance.col_type()).unwrap(),
+                ColumnHeader::new(User::BirthYear.col_id(),      User::BirthYear.col_type()).unwrap(),
             ]
+        }
+        fn create_d_buf(capacity : u16) -> Re<DBuf> {
+            DBuf::new(Tables::User.table_id(), User::create_colunms_header(), 10)
+        }
+        fn add_row(d_buff_ref: &mut DBuf, name : &str, surname : &str, birth_date :u32)  {
+            // Convertir le u32 en bytes (big-endian par défaut)
+            let birth_bytes = birth_date.to_be_bytes();
+
+            // Créer un vecteur pour stocker les données concaténées
+            let mut combined = Vec::with_capacity(name.len() + surname.len() + 4);
+
+            // Concaténer les bytes
+            combined.extend_from_slice(name.as_bytes());
+            combined.extend_from_slice(surname.as_bytes());
+            combined.extend_from_slice(&birth_bytes);
+            d_buff_ref.add_rows(combined.as_slice()).unwrap();
+        }
+
+        fn get_row(user_dbuff: &DBuf, index : u16) -> Re<(Cow<'static, str>, Cow<'static, str>,u32)> {
+            let r = user_dbuff.get_row(index).unwrap();
+
+            // On convertit le Cow emprunté en Cow possédé (Owned) avec into_owned()
+            let name = Cow::Owned(String::from_utf8_lossy(&r[0..12]).into_owned());
+            let surname = Cow::Owned(String::from_utf8_lossy(&r[12..24]).into_owned());
+            let birth_date = u32::from_be_bytes(r[24..28].try_into().unwrap()).clone();
+            Ok((name, surname,birth_date))
         }
     }
     pub enum Tables{
@@ -1220,9 +1247,10 @@ mod verbal_use_exemple {
     }
     #[test]
     fn test_verbal_exemple() {
-        let mut d_buf = DBuf::new(Tables::User.table_id(), User::create_colunms_header(), 10).unwrap();
-        let row_data = vec![1u8, 0, 1, 0, 0, 1, 0];
-        d_buf.add_rows(&row_data).unwrap();
-        assert_eq!(d_buf.header.row_count, 1);
+        let mut user_dbuff = User::create_d_buf(3).unwrap();
+        User::add_row(& mut user_dbuff ,"jean","toto",1990u32);
+        User::add_row(& mut user_dbuff ,"maurice","titi",1990u32);
+        let(nom,prenom,date) = User::get_row(&user_dbuff, 0).unwrap();
+        assert_eq!(nom, "jean");
     }
 }
