@@ -195,6 +195,9 @@ impl DBuf {
         if actual_data_size < expected_data_size { return Err(DErr::RootError(Fe::FromBytesDBuf,2,Rc::BufferTooSmall)); }
         Ok(DBuf { header, raw_values: bytes })
     }
+    pub fn build_dbuff_from_rawdata(bytes: Vec<u8>) -> Re<DBuf> {
+        DBuf::from_bytes(bytes)
+    }
     pub fn header_size(&self) -> usize { self.header.header_size() }
     pub fn data_offset(&self) -> usize { self.header_size() }
     pub fn add_rows(&mut self, rows_data: &[u8]) -> Re<()> {
@@ -240,6 +243,96 @@ impl DBuf {
     pub fn find_column(&self, col_id: u16) -> Re<&Column> {
         self.header.columns.iter().find(|c| c.header.col_id == col_id).ok_or_else(|| DErr::RootError(Fe::FindColumn,1,Rc::ColumnNotFound(col_id)))
     }
+    pub fn pretty_print(&self) -> String {
+        self.pretty_print_with_depth(0)
+    }
+    fn pretty_print_with_depth(&self, depth: usize) -> String {
+        let mut result = String::new();
+        let tabs = "\t".repeat(depth);
+        
+        result.push_str(&format!("{}Header:\n", tabs));
+        result.push_str(&format!("{}\tDBuf ID: {}\n", tabs, self.header.d_buf_id));
+        result.push_str(&format!("{}\tRow Count: {}\n", tabs, self.header.row_count));
+        result.push_str(&format!("{}\tRow Capacity: {}\n", tabs, self.header.row_capacity));
+        result.push_str(&format!("{}\tRow Size: {}\n", tabs, self.header.row_size));
+        result.push_str(&format!("{}\tColumns:\n", tabs));
+        
+        for col in &self.header.columns {
+            let col_type_str = match &col.header.col_type {
+                ColumnType::Boolean => "Boolean".to_string(),
+                ColumnType::U8 => "U8".to_string(),
+                ColumnType::U16 => "U16".to_string(),
+                ColumnType::U32 => "U32".to_string(),
+                ColumnType::U64 => "U64".to_string(),
+                ColumnType::I8 => "I8".to_string(),
+                ColumnType::I16 => "I16".to_string(),
+                ColumnType::I32 => "I32".to_string(),
+                ColumnType::I64 => "I64".to_string(),
+                ColumnType::F32 => "F32".to_string(),
+                ColumnType::F64 => "F64".to_string(),
+                ColumnType::UtcTime => "UtcTime".to_string(),
+                ColumnType::Char(s) => format!("Char({})", s),
+                ColumnType::Ascii(s) => format!("Ascii({})", s),
+                ColumnType::Child => "Child".to_string(),
+            };
+            let col_id_char = char::from_u32(col.header.col_id as u32).unwrap_or('?');
+            result.push_str(&format!("{}\t\tID: {} ('{}'), Type: {}, Size: {}\n", tabs, col.header.col_id, col_id_char, col_type_str, col.size));
+        }
+        
+        result.push_str(&format!("\n{}Data:\n", tabs));
+        
+        for row_idx in 0..self.header.row_count {
+            let row_data = self.get_row(row_idx).unwrap();
+            let mut col_offset = 0;
+            let mut row_values = Vec::new();
+            
+            for col in &self.header.columns {
+                let end = col_offset + col.size;
+                let cell_data = &row_data[col_offset..end];
+                
+                let cell_str = match &col.header.col_type {
+                    ColumnType::Boolean => format!("{}", cell_data[0] != 0),
+                    ColumnType::U8 => format!("{}", cell_data[0]),
+                    ColumnType::U16 => format!("{}", u16::from_be_bytes([cell_data[0], cell_data[1]])),
+                    ColumnType::U32 => format!("{}", u32::from_be_bytes([cell_data[0], cell_data[1], cell_data[2], cell_data[3]])),
+                    ColumnType::U64 => format!("{}", u64::from_be_bytes([cell_data[0], cell_data[1], cell_data[2], cell_data[3], cell_data[4], cell_data[5], cell_data[6], cell_data[7]])),
+                    ColumnType::I8 => format!("{}", cell_data[0] as i8),
+                    ColumnType::I16 => format!("{}", i16::from_be_bytes([cell_data[0], cell_data[1]])),
+                    ColumnType::I32 => format!("{}", i32::from_be_bytes([cell_data[0], cell_data[1], cell_data[2], cell_data[3]])),
+                    ColumnType::I64 => format!("{}", i64::from_be_bytes([cell_data[0], cell_data[1], cell_data[2], cell_data[3], cell_data[4], cell_data[5], cell_data[6], cell_data[7]])),
+                    ColumnType::F32 => format!("{}", f32::from_be_bytes([cell_data[0], cell_data[1], cell_data[2], cell_data[3]])),
+                    ColumnType::F64 => format!("{}", f64::from_be_bytes([cell_data[0], cell_data[1], cell_data[2], cell_data[3], cell_data[4], cell_data[5], cell_data[6], cell_data[7]])),
+                    ColumnType::UtcTime => format!("{}", u64::from_be_bytes([cell_data[0], cell_data[1], cell_data[2], cell_data[3], cell_data[4], cell_data[5], cell_data[6], cell_data[7]])),
+                    ColumnType::Char(_) | ColumnType::Ascii(_) => {
+                        let s = String::from_utf8_lossy(cell_data);
+                        format!("\"{}\"", s.trim_end_matches(char::from(0)))
+                    },
+                    ColumnType::Child => {
+                        let child_header_offset = u16::from_be_bytes([cell_data[0], cell_data[1]]);
+                        let first_child_row = u16::from_be_bytes([cell_data[2], cell_data[3]]);
+                        let last_child_row = u16::from_be_bytes([cell_data[4], cell_data[5]]);
+                        format!("Child(offset={}, first_row={}, last_row={})", child_header_offset, first_child_row, last_child_row)
+                    },
+                };
+                row_values.push(cell_str);
+                col_offset = end;
+            }
+            
+            result.push_str(&format!("{}\tRow {}: {}\n", tabs, row_idx, row_values.join("\t")));
+            
+            for col in &self.header.columns {
+                if col.header.col_type.is_child() {
+                    let child_result = self.get_child(row_idx, col.header.col_id);
+                    if let Ok(child_dbuf) = child_result {
+                        result.push_str(&format!("\n"));
+                        result.push_str(&child_dbuf.pretty_print_with_depth(depth + 1));
+                    }
+                }
+            }
+        }
+        
+        result
+    }
     pub fn add_row_with_child(&mut self, row_data: Vec<u8>, child_d_buf: DBuf, child_col_id: u16, first_child_row: u16, last_child_row: u16) -> Re<()> {
         if row_data.len() != self.header.row_size as usize { return Err(DErr::RootError(Fe::AddRowWithChild,1,Rc::DataSizeMismatch)); }
         let child_col = self.find_column(child_col_id)?;
@@ -263,6 +356,8 @@ impl DBuf {
         self.raw_values.extend_from_slice(&final_row_data);
         self.raw_values.extend_from_slice(&child_bytes);
         self.header.row_count += 1;
+        let header_bytes = self.header.to_bytes();
+        self.raw_values[..header_bytes.len()].copy_from_slice(&header_bytes);
         Ok(())
     }
     pub fn get_child(&self, row_index: u16, child_col_id: u16) -> Re<DBuf> {
@@ -615,12 +710,42 @@ mod tests {
         let d_buf = build_d_buf_from_structure(&users, 16).unwrap();
         assert_eq!(d_buf.header.d_buf_id, 1002);
         assert_eq!(d_buf.header.row_count, 1);
+        
+        let raw_data = d_buf.clone().into_raw_bytes();
+        let d_buf_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
+        assert_eq!(d_buf.header.d_buf_id, d_buf_from_raw.header.d_buf_id);
+        assert_eq!(d_buf.header.row_count, d_buf_from_raw.header.row_count);
+        assert_eq!(d_buf.header.row_size, d_buf_from_raw.header.row_size);
+        assert_eq!(d_buf.header.columns.len(), d_buf_from_raw.header.columns.len());
+        
+        for (orig_col, new_col) in d_buf.header.columns.iter().zip(d_buf_from_raw.header.columns.iter()) {
+            assert_eq!(orig_col.header.col_id, new_col.header.col_id);
+            assert_eq!(orig_col.header.col_type, new_col.header.col_type);
+        }
+        
+        let pretty = d_buf.pretty_print();
+        let path = std::path::Path::new("testresults/t20_multiple_children.txt");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, pretty).unwrap();
     }
     
     #[test] fn t21_max_depth_validation() {
         let products = vec![Product { id: 1, name: "X".to_string(), price: 1.0 }];
         let result = build_d_buf_from_structure(&products, 0);
         assert!(result.is_err());
+        
+        let products2 = vec![Product { id: 1, name: "Y".to_string(), price: 2.0 }];
+        let d_buf = build_d_buf_from_structure(&products2, 16).unwrap();
+        
+        let raw_data = d_buf.clone().into_raw_bytes();
+        let d_buf_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
+        assert_eq!(d_buf.header.d_buf_id, d_buf_from_raw.header.d_buf_id);
+        assert_eq!(d_buf.header.row_count, d_buf_from_raw.header.row_count);
+        
+        let pretty = d_buf.pretty_print();
+        let path = std::path::Path::new("testresults/t21_max_depth_validation.txt");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, pretty).unwrap();
     }
     
     #[test] fn t22_get_child_typed() {
@@ -634,5 +759,15 @@ mod tests {
         let rc = p.get_child(0, 2).unwrap();
         assert_eq!(rc.header.d_buf_id, 2);
         assert_eq!(rc.header.row_count, 1);
+        
+        let raw_data = p.clone().into_raw_bytes();
+        let p_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
+        assert_eq!(p.header.d_buf_id, p_from_raw.header.d_buf_id);
+        assert_eq!(p.header.row_count, p_from_raw.header.row_count);
+        
+        let pretty = p.pretty_print();
+        let path = std::path::Path::new("testresults/t22_get_child_typed.txt");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, pretty).unwrap();
     }
 }

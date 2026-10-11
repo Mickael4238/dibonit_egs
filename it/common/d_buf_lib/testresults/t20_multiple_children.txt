@@ -1,0 +1,24 @@
+Header:
+	DBuf ID: 1002
+	Row Count: 1
+	Row Capacity: 1
+	Row Size: 60
+	Columns:
+		ID: 1 (''), Type: U32, Size: 4
+		ID: 2 (''), Type: Char(50), Size: 50
+		ID: 3 (''), Type: Child, Size: 6
+
+Data:
+	Row 0: 1	"Charlie"	Child(offset=78, first_row=0, last_row=0)
+
+	Header:
+		DBuf ID: 1002
+		Row Count: 0
+		Row Capacity: 1
+		Row Size: 60
+		Columns:
+			ID: 1 (''), Type: U32, Size: 4
+			ID: 2 (''), Type: Char(50), Size: 50
+			ID: 3 (''), Type: Child, Size: 6
+
+	Data:
