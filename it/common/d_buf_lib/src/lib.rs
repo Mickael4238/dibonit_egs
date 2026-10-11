@@ -930,20 +930,41 @@ mod tests {
     }
     
     #[test] fn t20_multiple_children() {
-        let products = vec![
+        let productsAB = vec![
             Product { id: 1, name: "A".to_string(), price: 1.0 },
             Product { id: 2, name: "B".to_string(), price: 2.0 },
         ];
-        let orders = vec![
-            Order { id: 1, date: 100, products: products.clone() },
-            Order { id: 2, date: 200, products: products.clone() },
+
+        let productsCD = vec![
+            Product { id: 3, name: "C".to_string(), price: 1.0 },
+            Product { id: 4, name: "D".to_string(), price: 2.0 },
+        ];
+
+        let productsEF = vec![
+            Product { id: 1, name: "A".to_string(), price: 1.0 },
+            Product { id: 2, name: "B".to_string(), price: 2.0 },
+        ];
+
+        let productsGH = vec![
+            Product { id: 3, name: "C".to_string(), price: 1.0 },
+            Product { id: 4, name: "D".to_string(), price: 2.0 },
+        ];
+        let orders1 = vec![
+            Order { id: 1, date: 100, products: productsAB.clone() },
+            Order { id: 2, date: 200, products: productsCD.clone() },
+        ];
+
+        let orders2 = vec![
+            Order { id: 3, date: 100, products: productsEF.clone() },
+            Order { id: 4, date: 200, products: productsGH.clone() },
         ];
         let users = vec![
-            User { id: 1, name: "Charlie".to_string(), orders },
+            User { id: 1, name: "Charlie".to_string(),orders: orders1},
+            User { id: 2, name: "Charlie".to_string(),orders:  orders2 },
         ];
         let d_buf = build_d_buf_from_structure(&users, 16).unwrap();
         assert_eq!(d_buf.header.d_buf_id, 1002);
-        assert_eq!(d_buf.header.row_count, 1);
+        assert_eq!(d_buf.header.row_count, 2);
         
         let raw_data = d_buf.clone().into_raw_bytes();
         let d_buf_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
