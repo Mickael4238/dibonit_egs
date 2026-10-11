@@ -14,6 +14,9 @@ const COL_COUNT_HIGH_SHIFT: u8 = 2;
 const COL_ID_HIGH_MASK: u8 = 0xE0;
 const COL_ID_HIGH_SHIFT: u8 = 5;
 const COL_TYPE_MASK: u8 = 0x1F;
+const HAS_APP_TOKEN_MASK: u8 = 0x20;
+const HAS_USER_TOKEN_MASK: u8 = 0x40;
+const HAS_INDEX_MASK: u8 = 0x80;
 
 type Re<T> = Result<T, DErr<Fe, Rc>>;
 
@@ -94,16 +97,31 @@ impl Column { pub fn new(header: ColumnHeader) -> Column { Column { header: head
 
 #[derive(Clone, Debug)]
 pub struct DBufHeader {
-    pub d_buf_id: u16, pub columns: Vec<Column>, pub row_count: u16, pub row_capacity: u16, pub row_size: u16,
+    pub d_buf_id: u16,
+    pub columns: Vec<Column>,
+    pub row_count: u16,
+    pub row_capacity: u16,
+    pub row_size: u16,
+    pub has_app_token: bool,
+    pub has_user_token: bool,
+    pub has_index: bool,
+    pub app_token: Vec<u8>,
+    pub user_token: Vec<u8>,
 }
 
 impl DBufHeader {
     pub fn header_size(&self) -> usize {
         let mut size = 10;
+        if self.has_app_token {
+            size += 2 + self.app_token.len();
+        }
+        if self.has_user_token {
+            size += 2 + self.user_token.len();
+        }
         for col in &self.columns { size += 2; if col.header.col_type.requires_size_field() { size += 2; } }
         size
     }
-    pub fn new(d_buf_id: u16, columns: Vec<Column>, row_capacity: u16) -> Re<DBufHeader> {
+    pub fn new(d_buf_id: u16, columns: Vec<Column>, row_capacity: u16, has_app_token: bool, has_user_token: bool, has_index: bool, app_token: Vec<u8>, user_token: Vec<u8>) -> Re<DBufHeader> {
         if d_buf_id == 0 { return Err(DErr::RootError(Fe::NewDBufHeader,1,Rc::InvalidDBufId)); }
         if columns.len() > MAX_COLUMN_COUNT as usize { return Err(DErr::RootError(Fe::NewDBufHeader,2,Rc::ColumnCountExceeded)); }
         let mut seen_ids = HashMap::new();
@@ -113,12 +131,18 @@ impl DBufHeader {
         }
         let row_size: usize = columns.iter().map(|c| c.size).sum();
         if row_size > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,4,Rc::RowSizeExceeded)); }
-        Ok(DBufHeader { d_buf_id, columns, row_count: 0, row_capacity, row_size: row_size as u16 })
+        if has_app_token && app_token.len() > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,5,Rc::TokenTooLarge)); }
+        if has_user_token && user_token.len() > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,6,Rc::TokenTooLarge)); }
+        Ok(DBufHeader { d_buf_id, columns, row_count: 0, row_capacity, row_size: row_size as u16, has_app_token, has_user_token, has_index, app_token, user_token })
     }
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         let col_count_high = (self.columns.len() as u16 >> 8) as u8 & 0x07;
-        bytes.push((ROLLING_VERSION & ROLLING_VERSION_MASK) | ((col_count_high << COL_COUNT_HIGH_SHIFT) & COL_COUNT_HIGH_MASK));
+        let mut byte0 = (ROLLING_VERSION & ROLLING_VERSION_MASK) | ((col_count_high << COL_COUNT_HIGH_SHIFT) & COL_COUNT_HIGH_MASK);
+        if self.has_app_token { byte0 |= HAS_APP_TOKEN_MASK; }
+        if self.has_user_token { byte0 |= HAS_USER_TOKEN_MASK; }
+        if self.has_index { byte0 |= HAS_INDEX_MASK; }
+        bytes.push(byte0);
         bytes.push(self.columns.len() as u8);
         bytes.extend_from_slice(&self.d_buf_id.to_be_bytes());
         for col in &self.columns {
@@ -133,6 +157,14 @@ impl DBufHeader {
         bytes.extend_from_slice(&self.row_count.to_be_bytes());
         bytes.extend_from_slice(&self.row_capacity.to_be_bytes());
         bytes.extend_from_slice(&self.row_size.to_be_bytes());
+        if self.has_app_token {
+            bytes.extend_from_slice(&(self.app_token.len() as u16).to_be_bytes());
+            bytes.extend_from_slice(&self.app_token);
+        }
+        if self.has_user_token {
+            bytes.extend_from_slice(&(self.user_token.len() as u16).to_be_bytes());
+            bytes.extend_from_slice(&self.user_token);
+        }
         bytes
     }
     pub fn from_bytes(bytes: &[u8]) -> Re<DBufHeader> {
@@ -171,7 +203,33 @@ impl DBufHeader {
         if row_count > row_capacity { return Err(DErr::RootError(Fe::FromBytes,9,Rc::RowCountExceedsCapacity)); }
         let calculated_row_size: usize = columns.iter().map(|c| c.size).sum();
         if calculated_row_size != row_size as usize { return Err(DErr::RootError(Fe::FromBytes,10,Rc::RowSizeMismatch)); }
-        Ok(DBufHeader { d_buf_id, columns, row_count, row_capacity, row_size })
+        
+        let has_app_token = (byte0 & HAS_APP_TOKEN_MASK) != 0;
+        let has_user_token = (byte0 & HAS_USER_TOKEN_MASK) != 0;
+        let has_index = (byte0 & HAS_INDEX_MASK) != 0;
+        
+        let mut offset_after_header = offset + 6;
+        let mut app_token = Vec::new();
+        let mut user_token = Vec::new();
+        
+        if has_app_token {
+            if offset_after_header + 2 > bytes.len() { return Err(DErr::RootError(Fe::FromBytes,11,Rc::BufferTooSmall)); }
+            let app_token_len = u16::from_be_bytes([bytes[offset_after_header], bytes[offset_after_header + 1]]) as usize;
+            offset_after_header += 2;
+            if offset_after_header + app_token_len > bytes.len() { return Err(DErr::RootError(Fe::FromBytes,12,Rc::BufferTooSmall)); }
+            app_token = bytes[offset_after_header..offset_after_header + app_token_len].to_vec();
+            offset_after_header += app_token_len;
+        }
+        
+        if has_user_token {
+            if offset_after_header + 2 > bytes.len() { return Err(DErr::RootError(Fe::FromBytes,13,Rc::BufferTooSmall)); }
+            let user_token_len = u16::from_be_bytes([bytes[offset_after_header], bytes[offset_after_header + 1]]) as usize;
+            offset_after_header += 2;
+            if offset_after_header + user_token_len > bytes.len() { return Err(DErr::RootError(Fe::FromBytes,14,Rc::BufferTooSmall)); }
+            user_token = bytes[offset_after_header..offset_after_header + user_token_len].to_vec();
+        }
+        
+        Ok(DBufHeader { d_buf_id, columns, row_count, row_capacity, row_size, has_app_token, has_user_token, has_index, app_token, user_token })
     }
 }
 
@@ -181,7 +239,14 @@ pub struct DBuf { pub header: DBufHeader, pub raw_values: Vec<u8> }
 impl DBuf {
     pub fn new(d_buf_id: u16, columns: Vec<ColumnHeader>, row_capacity: u16) -> Re<DBuf> {
         let cols: Vec<Column> = columns.into_iter().map(Column::new).collect();
-        let header = DBufHeader::new(d_buf_id, cols, row_capacity)?;
+        let header = DBufHeader::new(d_buf_id, cols, row_capacity, false, false, false, Vec::new(), Vec::new())?;
+        let mut raw_values = header.to_bytes();
+        raw_values.reserve(header.row_capacity as usize * header.row_size as usize);
+        Ok(DBuf { header, raw_values })
+    }
+    pub fn new_with_tokens(d_buf_id: u16, columns: Vec<ColumnHeader>, row_capacity: u16, has_app_token: bool, has_user_token: bool, has_index: bool, app_token: Vec<u8>, user_token: Vec<u8>) -> Re<DBuf> {
+        let cols: Vec<Column> = columns.into_iter().map(Column::new).collect();
+        let header = DBufHeader::new(d_buf_id, cols, row_capacity, has_app_token, has_user_token, has_index, app_token, user_token)?;
         let mut raw_values = header.to_bytes();
         raw_values.reserve(header.row_capacity as usize * header.row_size as usize);
         Ok(DBuf { header, raw_values })
@@ -510,7 +575,7 @@ pub enum Rc {
     DuplicateColumnId(u16), ReservedColumnId, InvalidColumnType(u8), InvalidColumnSize, ColumnIdExceeded, InvalidDBufId, ColumnCountExceeded, RowSizeExceeded, MissingSizeForVariableType,
     CapacityExceeded, RowCapacityZero, DataSizeMismatch, IndexOutOfBounds, ColumnNotFound(u16), BufferTooSmall,
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
-    InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16),
+    InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge,
 }
 
 impl fmt::Display for Rc {
@@ -539,6 +604,7 @@ impl fmt::Display for Rc {
             Rc::ColumnNotChild(id) => write!(f, "ColumnNotChild({})", id),
             Rc::MaxDepthExceeded => write!(f, "MaxDepthExceeded"),
             Rc::DBufNotFound(id) => write!(f, "DBufNotFound({})", id),
+            Rc::TokenTooLarge => write!(f, "TokenTooLarge"),
         }
     }
 }
@@ -560,9 +626,54 @@ mod tests {
     #[test] fn t4() { assert!(!ColumnType::Child.requires_size_field()); }
     #[test] fn t5() { assert_eq!(ColumnType::from_type_id(14, None).unwrap(), ColumnType::Child); }
     #[test] fn t6() { assert!(ColumnHeader::new(4, ColumnType::Child).is_ok()); }
-    #[test] fn t7() { let cols: Vec<Column> = c().into_iter().map(Column::new).collect(); let h = DBufHeader::new(1, cols, 100).unwrap(); assert_eq!(h.row_size, 7); }
-    #[test] fn t8() { let cols = vec![Column::new(ColumnHeader::new(1, ColumnType::U32).unwrap()), Column::new(ColumnHeader::new(2, ColumnType::Child).unwrap())]; let h = DBufHeader::new(1, cols, 100).unwrap(); assert_eq!(h.row_size, 10); }
+    #[test] fn t7() { let cols: Vec<Column> = c().into_iter().map(Column::new).collect(); let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap(); assert_eq!(h.row_size, 7); }
+    #[test] fn t8() { let cols = vec![Column::new(ColumnHeader::new(1, ColumnType::U32).unwrap()), Column::new(ColumnHeader::new(2, ColumnType::Child).unwrap())]; let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap(); assert_eq!(h.row_size, 10); }
     #[test] fn t9() { let d = d(); assert_eq!(d.header.d_buf_id, 1); }
+    #[test] fn t23_token_flags_in_header() {
+        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let app_token = vec![1u8, 2, 3, 4];
+        let user_token = vec![5u8, 6, 7, 8, 9];
+        let h = DBufHeader::new(1, cols, 100, true, true, true, app_token.clone(), user_token.clone()).unwrap();
+        assert_eq!(h.has_app_token, true);
+        assert_eq!(h.has_user_token, true);
+        assert_eq!(h.has_index, true);
+        assert_eq!(h.app_token, app_token);
+        assert_eq!(h.user_token, user_token);
+    }
+    #[test] fn t24_token_serialization() {
+        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let app_token = vec![1u8, 2, 3, 4];
+        let user_token = vec![5u8, 6, 7, 8, 9];
+        let h = DBufHeader::new(1, cols, 100, true, true, false, app_token.clone(), user_token.clone()).unwrap();
+        let bytes = h.to_bytes();
+        let h2 = DBufHeader::from_bytes(&bytes).unwrap();
+        assert_eq!(h2.has_app_token, true);
+        assert_eq!(h2.has_user_token, true);
+        assert_eq!(h2.has_index, false);
+        assert_eq!(h2.app_token, app_token);
+        assert_eq!(h2.user_token, user_token);
+    }
+    #[test] fn t25_no_tokens() {
+        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap();
+        let bytes = h.to_bytes();
+        let h2 = DBufHeader::from_bytes(&bytes).unwrap();
+        assert_eq!(h2.has_app_token, false);
+        assert_eq!(h2.has_user_token, false);
+        assert_eq!(h2.has_index, false);
+        assert_eq!(h2.app_token.len(), 0);
+        assert_eq!(h2.user_token.len(), 0);
+    }
+    #[test] fn t26_only_app_token() {
+        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let app_token = vec![10u8, 20, 30];
+        let h = DBufHeader::new(1, cols, 100, true, false, false, app_token.clone(), Vec::new()).unwrap();
+        let bytes = h.to_bytes();
+        let h2 = DBufHeader::from_bytes(&bytes).unwrap();
+        assert_eq!(h2.has_app_token, true);
+        assert_eq!(h2.has_user_token, false);
+        assert_eq!(h2.app_token, app_token);
+    }
     #[test] fn t10() { let mut d = d(); d.add_rows(&vec![1,0,1,0,0,1,0]).unwrap(); assert_eq!(d.header.row_count, 1); }
     #[test] fn t11() { let mut d = d(); let rd = vec![1,0,1,0,0,1,0]; d.add_rows(&rd).unwrap(); assert_eq!(d.get_row(0).unwrap(), rd); }
     #[test] fn t12() { let mut d = d(); d.add_rows(&vec![1,0,1,0,0,1,0]).unwrap(); assert_eq!(d.get_col(0,1).unwrap(), vec![1]); assert_eq!(d.get_col(0,2).unwrap(), vec![0,1]); }
