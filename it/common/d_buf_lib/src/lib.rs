@@ -263,6 +263,122 @@ impl DBuf {
     pub fn build_dbuff_from_rawdata(bytes: Vec<u8>) -> Re<DBuf> {
         DBuf::from_bytes(bytes)
     }
+    
+    pub fn compare_structure(
+        &self,
+        other: &DBuf,
+        check_id: bool,
+        check_user_token: bool,
+        check_app_token: bool,
+        check_children: bool,
+        all_columns_are_checked: bool,
+    ) -> Re<()> {
+        // Check d_buf_id if requested
+        if check_id && self.header.d_buf_id != other.header.d_buf_id {
+            return Err(DErr::RootError(Fe::CompareStructure, 1, Rc::DBufIdMismatch));
+        }
+
+        // Check app_token if requested
+        if check_app_token {
+            if self.header.has_app_token != other.header.has_app_token {
+                return Err(DErr::RootError(Fe::CompareStructure, 2, Rc::ColumnTypeMismatch));
+            }
+            if self.header.has_app_token && self.header.app_token != other.header.app_token {
+                return Err(DErr::RootError(Fe::CompareStructure, 3, Rc::ColumnTypeMismatch));
+            }
+        }
+
+        // Check user_token if requested
+        if check_user_token {
+            if self.header.has_user_token != other.header.has_user_token {
+                return Err(DErr::RootError(Fe::CompareStructure, 4, Rc::ColumnTypeMismatch));
+            }
+            if self.header.has_user_token && self.header.user_token != other.header.user_token {
+                return Err(DErr::RootError(Fe::CompareStructure, 5, Rc::ColumnTypeMismatch));
+            }
+        }
+
+        // Check columns: ensure all columns in other exist in self (other can't have more info)
+        for col_other in &other.header.columns {
+            let col_self_opt = self
+                .header
+                .columns
+                .iter()
+                .find(|c| c.header.col_id == col_other.header.col_id);
+            
+            if let Some(col_self) = col_self_opt {
+                // Check column type
+                if col_self.header.col_type != col_other.header.col_type {
+                    return Err(DErr::RootError(Fe::CompareStructure, 6, Rc::ColumnTypeMismatch));
+                }
+                // Check column size
+                if col_self.size != col_other.size {
+                    return Err(DErr::RootError(Fe::CompareStructure, 7, Rc::ColumnSizeMismatch));
+                }
+            } else {
+                // Column in other not found in self - always error
+                return Err(DErr::RootError(Fe::CompareStructure, 8, Rc::ExtraColumnInSecondDBuf));
+            }
+        }
+
+        // If all_columns_are_checked, ensure self doesn't have extra columns
+        if all_columns_are_checked {
+            for col_self in &self.header.columns {
+                if !other
+                    .header
+                    .columns
+                    .iter()
+                    .any(|c| c.header.col_id == col_self.header.col_id)
+                {
+                    return Err(DErr::RootError(Fe::CompareStructure, 9, Rc::MissingColumnInSecondDBuf));
+                }
+            }
+        }
+
+        // Check children if requested
+        if check_children {
+            // Find child columns in both
+            let child_col_self = self
+                .header
+                .columns
+                .iter()
+                .find(|c| c.header.col_type.is_child());
+            let child_col_other = other
+                .header
+                .columns
+                .iter()
+                .find(|c| c.header.col_type.is_child());
+
+            if let Some(col_self) = child_col_self {
+                if let Some(col_other) = child_col_other {
+                    if col_self.header.col_id != col_other.header.col_id {
+                        return Err(DErr::RootError(Fe::CompareStructure, 10, Rc::ColumnTypeMismatch));
+                    }
+                    // Compare children for each row
+                    for row_idx in 0..self.header.row_count.min(other.header.row_count) {
+                        let child_self_result = self.get_child(row_idx, col_self.header.col_id);
+                        let child_other_result = other.get_child(row_idx, col_other.header.col_id);
+                        
+                        if let (Ok(child_self), Ok(child_other)) = (child_self_result, child_other_result) {
+                            child_self.compare_structure(
+                                &child_other,
+                                check_id,
+                                check_user_token,
+                                check_app_token,
+                                check_children,
+                                all_columns_are_checked,
+                            )?;
+                        }
+                    }
+                }
+            } else if child_col_other.is_some() {
+                // other has child column but self doesn't
+                return Err(DErr::RootError(Fe::CompareStructure, 11, Rc::ExtraColumnInSecondDBuf));
+            }
+        }
+
+        Ok(())
+    }
     pub fn header_size(&self) -> usize { self.header.header_size() }
     pub fn data_offset(&self) -> usize { self.header_size() }
     pub fn add_rows(&mut self, rows_data: &[u8]) -> Re<()> {
@@ -576,6 +692,7 @@ pub enum Rc {
     CapacityExceeded, RowCapacityZero, DataSizeMismatch, IndexOutOfBounds, ColumnNotFound(u16), BufferTooSmall,
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
     InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge,
+    DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,
 }
 
 impl fmt::Display for Rc {
@@ -605,6 +722,11 @@ impl fmt::Display for Rc {
             Rc::MaxDepthExceeded => write!(f, "MaxDepthExceeded"),
             Rc::DBufNotFound(id) => write!(f, "DBufNotFound({})", id),
             Rc::TokenTooLarge => write!(f, "TokenTooLarge"),
+            Rc::DBufIdMismatch => write!(f, "DBufIdMismatch"),
+            Rc::ColumnTypeMismatch => write!(f, "ColumnTypeMismatch"),
+            Rc::ColumnSizeMismatch => write!(f, "ColumnSizeMismatch"),
+            Rc::ExtraColumnInSecondDBuf => write!(f, "ExtraColumnInSecondDBuf"),
+            Rc::MissingColumnInSecondDBuf => write!(f, "MissingColumnInSecondDBuf"),
         }
     }
 }
@@ -613,6 +735,7 @@ impl fmt::Display for Rc {
 pub enum Fe {
     NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
     GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
+    CompareStructure,
 }
 
 #[cfg(test)]
@@ -880,5 +1003,72 @@ mod tests {
         let path = std::path::Path::new("testresults/t22_get_child_typed.txt");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, pretty).unwrap();
+    }
+    
+    #[test] fn t27_compare_structure_basic() {
+        let cols = vec![
+            ColumnHeader::new(1, ColumnType::U32).unwrap(),
+            ColumnHeader::new(2, ColumnType::U16).unwrap(),
+        ];
+        let d1 = DBuf::new(100, cols.clone(), 10).unwrap();
+        let d2 = DBuf::new(100, cols, 10).unwrap();
+        
+        assert!(d1.compare_structure(&d2, true, true, true, true, true).is_ok());
+    }
+    
+    #[test] fn t28_compare_structure_id_mismatch() {
+        let cols = vec![
+            ColumnHeader::new(1, ColumnType::U32).unwrap(),
+        ];
+        let d1 = DBuf::new(100, cols.clone(), 10).unwrap();
+        let d2 = DBuf::new(200, cols, 10).unwrap();
+        
+        assert!(d1.compare_structure(&d2, true, true, true, true, true).is_err());
+        assert!(d1.compare_structure(&d2, false, true, true, true, true).is_ok());
+    }
+    
+    #[test] fn t29_compare_structure_extra_column() {
+        let cols1 = vec![
+            ColumnHeader::new(1, ColumnType::U32).unwrap(),
+        ];
+        let cols2 = vec![
+            ColumnHeader::new(1, ColumnType::U32).unwrap(),
+            ColumnHeader::new(2, ColumnType::U16).unwrap(),
+        ];
+        let d1 = DBuf::new(100, cols1, 10).unwrap();
+        let d2 = DBuf::new(100, cols2, 10).unwrap();
+        
+        // d2 has extra column - should always fail
+        assert!(d1.compare_structure(&d2, true, true, true, true, true).is_err());
+    }
+    
+    #[test] fn t30_compare_structure_missing_column() {
+        let cols1 = vec![
+            ColumnHeader::new(1, ColumnType::U32).unwrap(),
+            ColumnHeader::new(2, ColumnType::U16).unwrap(),
+        ];
+        let cols2 = vec![
+            ColumnHeader::new(1, ColumnType::U32).unwrap(),
+        ];
+        let d1 = DBuf::new(100, cols1, 10).unwrap();
+        let d2 = DBuf::new(100, cols2, 10).unwrap();
+        
+        // With all_columns_are_checked=true, should fail
+        assert!(d1.compare_structure(&d2, true, true, true, true, true).is_err());
+        // With all_columns_are_checked=false, should succeed
+        assert!(d1.compare_structure(&d2, true, true, true, true, false).is_ok());
+    }
+    
+    #[test] fn t31_compare_structure_column_type_mismatch() {
+        let cols1 = vec![
+            ColumnHeader::new(1, ColumnType::U32).unwrap(),
+        ];
+        let cols2 = vec![
+            ColumnHeader::new(1, ColumnType::U16).unwrap(),
+        ];
+        let d1 = DBuf::new(100, cols1, 10).unwrap();
+        let d2 = DBuf::new(100, cols2, 10).unwrap();
+        
+        assert!(d1.compare_structure(&d2, true, true, true, true, true).is_err());
     }
 }
