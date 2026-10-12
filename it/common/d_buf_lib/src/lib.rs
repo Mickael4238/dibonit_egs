@@ -1,7 +1,7 @@
 use std::fmt;
 use std::any::Any;
 use std::collections::HashMap;
-use d_err_lib::DErr;
+use d_err_lib::{DErr, DErrMap};
 
 const ROLLING_VERSION: u8 = 0;
 const MAX_ROLLING_VERSION: u8 = 3;
@@ -81,24 +81,24 @@ pub trait IntoDBuf: Downcast + Sync {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ColumnHeader { pub col_id: u16, pub col_type: ColumnType }
+pub struct ColumnHeader { pub col_id: u16, pub size: usize, pub col_type: ColumnType }
 
 impl ColumnHeader {
     pub fn new(col_id: u16, col_type: ColumnType) -> Re<ColumnHeader> {
         if col_id == 0 { return Err(DErr::RootError(Fe::NewColumnHeader,1,Rc::ReservedColumnId)); }
         if col_id > MAX_COLUMN_ID { return Err(DErr::RootError(Fe::NewColumnHeader,2,Rc::ColumnIdExceeded)); }
-        Ok(ColumnHeader { col_id, col_type })
+        Ok(ColumnHeader { col_id, size:col_type.size_of(),col_type})
     }
 }
 
-#[derive(Clone, Debug)]
+/*#[derive(Clone, Debug)]
 pub struct Column { pub header: ColumnHeader, pub size: usize }
-impl Column { pub fn new(header: ColumnHeader) -> Column { Column { header: header.clone(), size: header.col_type.size_of() } } }
-
+impl Column { pub fn new(header: ColumnHeader) -> Column { Column { header: header.clone(), size: col_type.size_of() } } }
+*/
 #[derive(Clone, Debug)]
 pub struct DBufHeader {
     pub d_buf_id: u16,
-    pub columns: Vec<Column>,
+    pub columns: Vec<ColumnHeader>,
     pub row_count: u16,
     pub row_capacity: u16,
     pub row_size: u16,
@@ -118,16 +118,16 @@ impl DBufHeader {
         if self.has_user_token {
             size += 2 + self.user_token.len();
         }
-        for col in &self.columns { size += 2; if col.header.col_type.requires_size_field() { size += 2; } }
+        for col in &self.columns { size += 2; if col.col_type.requires_size_field() { size += 2; } }
         size
     }
-    pub fn new(d_buf_id: u16, columns: Vec<Column>, row_capacity: u16, has_app_token: bool, has_user_token: bool, has_index: bool, app_token: Vec<u8>, user_token: Vec<u8>) -> Re<DBufHeader> {
+    pub fn new(d_buf_id: u16, columns: Vec<ColumnHeader>, row_capacity: u16, has_app_token: bool, has_user_token: bool, has_index: bool, app_token: Vec<u8>, user_token: Vec<u8>) -> Re<DBufHeader> {
         if d_buf_id == 0 { return Err(DErr::RootError(Fe::NewDBufHeader,1,Rc::InvalidDBufId)); }
         if columns.len() > MAX_COLUMN_COUNT as usize { return Err(DErr::RootError(Fe::NewDBufHeader,2,Rc::ColumnCountExceeded)); }
         let mut seen_ids = HashMap::new();
         for col in &columns {
-            if seen_ids.contains_key(&col.header.col_id) { return Err(DErr::RootError(Fe::NewDBufHeader,3,Rc::DuplicateColumnId(col.header.col_id))); }
-            seen_ids.insert(col.header.col_id, ());
+            if seen_ids.contains_key(&col.col_id) { return Err(DErr::RootError(Fe::NewDBufHeader,3,Rc::DuplicateColumnId(col.col_id))); }
+            seen_ids.insert(col.col_id, ());
         }
         let row_size: usize = columns.iter().map(|c| c.size).sum();
         if row_size > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,4,Rc::RowSizeExceeded)); }
@@ -146,12 +146,12 @@ impl DBufHeader {
         bytes.push(self.columns.len() as u8);
         bytes.extend_from_slice(&self.d_buf_id.to_be_bytes());
         for col in &self.columns {
-            let col_id_high = (col.header.col_id >> 8) as u8 & 0x07;
-            let col_type_id = col.header.col_type.type_id() & COL_TYPE_MASK;
+            let col_id_high = (col.col_id >> 8) as u8 & 0x07;
+            let col_type_id = col.col_type.type_id() & COL_TYPE_MASK;
             bytes.push(((col_id_high << COL_ID_HIGH_SHIFT) & COL_ID_HIGH_MASK) | (col_type_id & COL_TYPE_MASK));
-            bytes.push(col.header.col_id as u8);
-            if col.header.col_type.requires_size_field() {
-                if let ColumnType::Char(s) | ColumnType::Ascii(s) = col.header.col_type { bytes.extend_from_slice(&(s as u16).to_be_bytes()); }
+            bytes.push(col.col_id as u8);
+            if col.col_type.requires_size_field() {
+                if let ColumnType::Char(s) | ColumnType::Ascii(s) = col.col_type { bytes.extend_from_slice(&(s as u16).to_be_bytes()); }
             }
         }
         bytes.extend_from_slice(&self.row_count.to_be_bytes());
@@ -194,7 +194,7 @@ impl DBufHeader {
                 let s = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) as usize; offset += 2; Some(s)
             } else { None };
             let col_type = ColumnType::from_type_id(col_type_id, size)?;
-            columns.push(Column::new(ColumnHeader { col_id, col_type }));
+            columns.push(ColumnHeader::new(col_id, col_type ));
         }
         if offset + 6 > bytes.len() { return Err(DErr::RootError(Fe::FromBytes,8,Rc::BufferTooSmall)); }
         let row_count = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
@@ -236,16 +236,18 @@ impl DBufHeader {
 #[derive(Clone, Debug)]
 pub struct DBuf { pub header: DBufHeader, pub raw_values: Vec<u8> }
 
+
 impl DBuf {
+
     pub fn new(d_buf_id: u16, columns: Vec<ColumnHeader>, row_capacity: u16) -> Re<DBuf> {
-        let cols: Vec<Column> = columns.into_iter().map(Column::new).collect();
+        let cols: Vec<ColumnHeader> = columns.into_iter().map(ColumnHeader::new).collect();
         let header = DBufHeader::new(d_buf_id, cols, row_capacity, false, false, false, Vec::new(), Vec::new())?;
         let mut raw_values = header.to_bytes();
         raw_values.reserve(header.row_capacity as usize * header.row_size as usize);
         Ok(DBuf { header, raw_values })
     }
     pub fn new_with_tokens(d_buf_id: u16, columns: Vec<ColumnHeader>, row_capacity: u16, has_app_token: bool, has_user_token: bool, has_index: bool, app_token: Vec<u8>, user_token: Vec<u8>) -> Re<DBuf> {
-        let cols: Vec<Column> = columns.into_iter().map(Column::new).collect();
+        let cols: Vec<ColumnHeader> = columns.into_iter().map(ColumnHeader::new).collect();
         let header = DBufHeader::new(d_buf_id, cols, row_capacity, has_app_token, has_user_token, has_index, app_token, user_token)?;
         let mut raw_values = header.to_bytes();
         raw_values.reserve(header.row_capacity as usize * header.row_size as usize);
@@ -260,8 +262,8 @@ impl DBuf {
         if actual_data_size < expected_data_size { return Err(DErr::RootError(Fe::FromBytesDBuf,2,Rc::BufferTooSmall)); }
         Ok(DBuf { header, raw_values: bytes })
     }
-    pub fn build_dbuff_from_rawdata(bytes: Vec<u8>) -> Re<DBuf> {
-        DBuf::from_bytes(bytes)
+    fn get_header_size() -> usize {
+
     }
     
     pub fn compare_structure(
@@ -299,16 +301,16 @@ impl DBuf {
         }
 
         // Check columns: ensure all columns in other exist in self (other can't have more info)
-        for col_other in &other.header.columns {
+        for col_other in &other.columns {
             let col_self_opt = self
                 .header
                 .columns
                 .iter()
-                .find(|c| c.header.col_id == col_other.header.col_id);
+                .find(|c| c.col_id == col_other.col_id);
             
             if let Some(col_self) = col_self_opt {
                 // Check column type
-                if col_self.header.col_type != col_other.header.col_type {
+                if col_self.col_type != col_other.col_type {
                     return Err(DErr::RootError(Fe::CompareStructure, 6, Rc::ColumnTypeMismatch));
                 }
                 // Check column size
@@ -323,12 +325,12 @@ impl DBuf {
 
         // If all_columns_are_checked, ensure self doesn't have extra columns
         if all_columns_are_checked {
-            for col_self in &self.header.columns {
+            for col_self in &self.columns {
                 if !other
                     .header
                     .columns
                     .iter()
-                    .any(|c| c.header.col_id == col_self.header.col_id)
+                    .any(|c| c.col_id == col_self.col_id)
                 {
                     return Err(DErr::RootError(Fe::CompareStructure, 9, Rc::MissingColumnInSecondDBuf));
                 }
@@ -342,22 +344,22 @@ impl DBuf {
                 .header
                 .columns
                 .iter()
-                .find(|c| c.header.col_type.is_child());
+                .find(|c| c.col_type.is_child());
             let child_col_other = other
                 .header
                 .columns
                 .iter()
-                .find(|c| c.header.col_type.is_child());
+                .find(|c| c.col_type.is_child());
 
             if let Some(col_self) = child_col_self {
                 if let Some(col_other) = child_col_other {
-                    if col_self.header.col_id != col_other.header.col_id {
+                    if col_self.col_id != col_other.col_id {
                         return Err(DErr::RootError(Fe::CompareStructure, 10, Rc::ColumnTypeMismatch));
                     }
                     // Compare children for each row
                     for row_idx in 0..self.header.row_count.min(other.header.row_count) {
-                        let child_self_result = self.get_child(row_idx, col_self.header.col_id);
-                        let child_other_result = other.get_child(row_idx, col_other.header.col_id);
+                        let child_self_result = self.get_child(row_idx, col_self.col_id);
+                        let child_other_result = other.get_child(row_idx, col_other.col_id);
                         
                         if let (Ok(child_self), Ok(child_other)) = (child_self_result, child_other_result) {
                             child_self.compare_structure(
@@ -404,25 +406,25 @@ impl DBuf {
     }
     pub fn get_col(&self, row_index: u16, col_id: u16) -> Re<Vec<u8>> {
         if row_index >= self.header.row_count { return Err(DErr::RootError(Fe::GetCol,1,Rc::IndexOutOfBounds)); }
-        let col = self.header.columns.iter().find(|c| c.header.col_id == col_id).ok_or_else(|| DErr::RootError(Fe::GetCol,2,Rc::ColumnNotFound(col_id)))?;
+        let col = self.columns.iter().find(|c| c.col_id == col_id).ok_or_else(|| DErr::RootError(Fe::GetCol,2,Rc::ColumnNotFound(col_id)))?;
         let row_start = self.data_offset() + (row_index as usize * self.header.row_size as usize);
         let mut col_offset = 0;
-        for c in &self.header.columns { if c.header.col_id == col_id { break; } col_offset += c.size; }
+        for c in &self.columns { if c.col_id == col_id { break; } col_offset += c.size; }
         let start = row_start + col_offset; let end = start + col.size;
         if end > self.raw_values.len() { return Err(DErr::RootError(Fe::GetCol,3,Rc::BufferTooSmall)); }
         Ok(self.raw_values[start..end].to_vec())
     }
     pub fn get_d_buf_id(&self) -> u16 { self.header.d_buf_id }
     pub fn get_column_metadata(&self, col_id: u16) -> Re<(&ColumnHeader, usize)> {
-        let col = self.header.columns.iter().find(|c| c.header.col_id == col_id).ok_or_else(|| DErr::RootError(Fe::GetColumnMetadata,1,Rc::ColumnNotFound(col_id)))?;
+        let col = self.columns.iter().find(|c| c.col_id == col_id).ok_or_else(|| DErr::RootError(Fe::GetColumnMetadata,1,Rc::ColumnNotFound(col_id)))?;
         Ok((&col.header, col.size))
     }
     pub fn get_all_rows(&self) -> Vec<Vec<u8>> { (0..self.header.row_count).filter_map(|i| self.get_row(i).ok()).collect() }
     pub fn into_raw_bytes(self) -> Vec<u8> { self.raw_values }
     pub fn as_raw_bytes(&self) -> &[u8] { &self.raw_values }
-    pub fn iter_columns(&self) -> impl Iterator<Item = &Column> { self.header.columns.iter() }
-    pub fn find_column(&self, col_id: u16) -> Re<&Column> {
-        self.header.columns.iter().find(|c| c.header.col_id == col_id).ok_or_else(|| DErr::RootError(Fe::FindColumn,1,Rc::ColumnNotFound(col_id)))
+    pub fn iter_columns(&self) -> impl Iterator<Item = &Column> { self.columns.iter() }
+    pub fn find_column(&self, col_id: u16) -> Re<&ColumnHeader> {
+        self.columns.iter().find(|c| c.col_id == col_id).ok_or_else(|| DErr::RootError(Fe::FindColumn,1,Rc::ColumnNotFound(col_id)))
     }
     pub fn pretty_print(&self) -> String {
         self.pretty_print_with_depth(0)
@@ -438,8 +440,8 @@ impl DBuf {
         result.push_str(&format!("{}\tRow Size: {}\n", tabs, self.header.row_size));
         result.push_str(&format!("{}\tColumns:\n", tabs));
         
-        for col in &self.header.columns {
-            let col_type_str = match &col.header.col_type {
+        for col in &self.columns {
+            let col_type_str = match &col.col_type {
                 ColumnType::Boolean => "Boolean".to_string(),
                 ColumnType::U8 => "U8".to_string(),
                 ColumnType::U16 => "U16".to_string(),
@@ -456,8 +458,8 @@ impl DBuf {
                 ColumnType::Ascii(s) => format!("Ascii({})", s),
                 ColumnType::Child => "Child".to_string(),
             };
-            let col_id_char = char::from_u32(col.header.col_id as u32).unwrap_or('?');
-            result.push_str(&format!("{}\t\tID: {} ('{}'), Type: {}, Size: {}\n", tabs, col.header.col_id, col_id_char, col_type_str, col.size));
+            let col_id_char = char::from_u32(col.col_id as u32).unwrap_or('?');
+            result.push_str(&format!("{}\t\tID: {} ('{}'), Type: {}, Size: {}\n", tabs, col.col_id, col_id_char, col_type_str, col.size));
         }
         
         result.push_str(&format!("\n{}Data:\n", tabs));
@@ -467,11 +469,11 @@ impl DBuf {
             let mut col_offset = 0;
             let mut row_values = Vec::new();
             
-            for col in &self.header.columns {
+            for col in &self.columns {
                 let end = col_offset + col.size;
                 let cell_data = &row_data[col_offset..end];
                 
-                let cell_str = match &col.header.col_type {
+                let cell_str = match &col.col_type {
                     ColumnType::Boolean => format!("{}", cell_data[0] != 0),
                     ColumnType::U8 => format!("{}", cell_data[0]),
                     ColumnType::U16 => format!("{}", u16::from_be_bytes([cell_data[0], cell_data[1]])),
@@ -501,9 +503,9 @@ impl DBuf {
             
             result.push_str(&format!("{}\tRow {}: {}\n", tabs, row_idx, row_values.join("\t")));
             
-            for col in &self.header.columns {
-                if col.header.col_type.is_child() {
-                    let child_result = self.get_child(row_idx, col.header.col_id);
+            for col in &self.columns {
+                if col.col_type.is_child() {
+                    let child_result = self.get_child(row_idx, col.col_id);
                     if let Ok(child_dbuf) = child_result {
                         result.push_str(&format!("\n"));
                         result.push_str(&child_dbuf.pretty_print_with_depth(depth + 1));
@@ -517,7 +519,7 @@ impl DBuf {
     pub fn add_row_with_child(&mut self, row_data: Vec<u8>, child_d_buf: DBuf, child_col_id: u16, first_child_row: u16, last_child_row: u16) -> Re<()> {
         if row_data.len() != self.header.row_size as usize { return Err(DErr::RootError(Fe::AddRowWithChild,1,Rc::DataSizeMismatch)); }
         let child_col = self.find_column(child_col_id)?;
-        if !child_col.header.col_type.is_child() { return Err(DErr::RootError(Fe::AddRowWithChild,2,Rc::ColumnNotChild(child_col_id))); }
+        if !child_col.col_type.is_child() { return Err(DErr::RootError(Fe::AddRowWithChild,2,Rc::ColumnNotChild(child_col_id))); }
         let child_bytes = child_d_buf.into_raw_bytes();
         let data_start = self.data_offset();
         let new_row_start = data_start + (self.header.row_count as usize * self.header.row_size as usize);
@@ -525,8 +527,8 @@ impl DBuf {
         let child_header_offset_u16 = child_abs_offset as u16;
         let mut final_row_data = row_data;
         let mut col_offset = 0;
-        for col in &self.header.columns {
-            if col.header.col_id == child_col_id {
+        for col in &self.columns {
+            if col.col_id == child_col_id {
                 final_row_data[col_offset..col_offset+2].copy_from_slice(&child_header_offset_u16.to_be_bytes());
                 final_row_data[col_offset+2..col_offset+4].copy_from_slice(&first_child_row.to_be_bytes());
                 final_row_data[col_offset+4..col_offset+6].copy_from_slice(&last_child_row.to_be_bytes());
@@ -544,11 +546,11 @@ impl DBuf {
     pub fn get_child(&self, row_index: u16, child_col_id: u16) -> Re<DBuf> {
         if row_index >= self.header.row_count { return Err(DErr::RootError(Fe::GetChild,1,Rc::IndexOutOfBounds)); }
         let child_col = self.find_column(child_col_id)?;
-        if !child_col.header.col_type.is_child() { return Err(DErr::RootError(Fe::GetChild,2,Rc::ColumnNotChild(child_col_id))); }
+        if !child_col.col_type.is_child() { return Err(DErr::RootError(Fe::GetChild,2,Rc::ColumnNotChild(child_col_id))); }
         let row_start = self.data_offset() + (row_index as usize * self.header.row_size as usize);
         let mut col_offset = 0;
-        for col in &self.header.columns {
-            if col.header.col_id == child_col_id { break; }
+        for col in &self.columns {
+            if col.col_id == child_col_id { break; }
             col_offset += col.size;
         }
         let child_data_start = row_start + col_offset;
@@ -583,6 +585,58 @@ impl DBuf {
 
 pub fn build_d_buf_from_structure<T: IntoDBuf + 'static + Clone>(data: &[T], max_depth: u8) -> Re<DBuf> {
     if max_depth > MAX_RECURSION_DEPTH { return Err(DErr::RootError(Fe::MaxDepthExceeded,1,Rc::MaxDepthExceeded)); }
+    let root = data.first().ok_or_else(|| DErr::RootError(Fe::DBufNotFound,1,Rc::BufferTooSmall))?;
+    let _d_buf_id = root.d_buf_id();
+    let _columns = root.columns();
+    let _child_col_id = root.child_column_id();
+    let all_items: Vec<&dyn IntoDBuf> = data.iter().map(|x| x as &dyn IntoDBuf).collect();
+    let mut depth = 0u8;
+    let all_d_buf_defs = collect_d_buf_definitions(&all_items, &mut depth, max_depth)?;
+    let root_d_buf = fill_d_bufs(&all_d_buf_defs, &all_items, 0, &mut depth, max_depth)?;
+    Ok(root_d_buf)
+}
+
+
+struct DBuffBuilder {
+    current_size: usize,
+    current_depth: u8,
+    max_depth: u8,
+    version:u8,
+}
+pub fn new_dbuf_recursive<T: IntoDBuf + 'static + Clone>(data: &[T], version : u8,max_depth : u8, has_app_token: bool, has_user_token: bool,has_index : bool,app_token : Vec<u8>, user_tocken : Vec<u8>)-> Re<(DBuf)>{
+    if max_depth > MAX_RECURSION_DEPTH { return Err(DErr::RootError(Fe::NewDBuf,1,Rc::MaxDepthExceeded)); }
+    if version > MAX_ROLLING_VERSION { return Err(DErr::RootError(Fe::NewDBuf,2,Rc::MaxVersionExceeded)); }
+    let mut builder = DBuffBuilder{
+        current_size: 0,
+        current_depth: 0,
+        max_depth,
+        version,
+    };
+    calculate_build_d_buf_from_structure(& mut builder,&data, has_app_token, has_user_token,has_index,app_token,user_tocken).d_err_map(Fe::NewDBuf,3)?;
+    build_d_buf_from_structure2(& mut builder,&data)
+}
+
+pub fn calculate_build_d_buf_from_structure<T: IntoDBuf + 'static + Clone>(builder : & mut DBuffBuilder, data: &[T], has_app_token: bool, has_user_token: bool,has_index : bool,app_token : Vec<u8>, user_tocken : Vec<u8>) -> Re<()> {
+    builder.current_depth = builder.current_depth +1;
+    if builder.current_depth > builder.max_depth { return Err(DErr::RootError(Fe::Calculate_build_d_buf_from_structure,1,Rc::MaxDepthExceeded)); }
+    //TO_DO: fill and complete the builder structure so all necessary build information is available for build_d_buf_from_structure2
+
+    let root = data.first().ok_or_else(|| DErr::RootError(Fe::DBufNotFound,1,Rc::BufferTooSmall))?;
+    let _d_buf_id = root.d_buf_id();
+    let _columns = root.columns();
+    let _child_col_id = root.child_column_id();
+    let all_items: Vec<&dyn IntoDBuf> = data.iter().map(|x| x as &dyn IntoDBuf).collect();
+    let header = DBufHeader::new(_d_buf_id, _columns, row_capacity, has_app_token, has_user_token,has_index,app_token,user_tocken)
+    let header_size = DBuf::get_header_size();
+    let mut depth = 0u8;
+    let all_d_buf_defs = collect_d_buf_definitions(&all_items, &mut depth, max_depth)?;
+    let root_d_buf = fill_d_bufs(&all_d_buf_defs, &all_items, 0, &mut depth, max_depth)?;
+    Ok(())
+}
+pub fn build_d_buf_from_structure2<T: IntoDBuf + 'static + Clone>(builder : & mut DBuffBuilder,data: &[T]) -> Re<(DBuf)> {
+    builder.current_depth = builder.current_depth +1;
+    if builder.current_depth > builder.max_depth { return Err(DErr::RootError(Fe::build_d_buf_from_structure,1,Rc::MaxDepthExceeded)); }
+
     let root = data.first().ok_or_else(|| DErr::RootError(Fe::DBufNotFound,1,Rc::BufferTooSmall))?;
     let _d_buf_id = root.d_buf_id();
     let _columns = root.columns();
@@ -660,8 +714,8 @@ fn fill_d_bufs(definitions: &[DBufDefinition], items: &[&dyn IntoDBuf], def_inde
                 let child_row_count = child_d_buf.header.row_count;
                 let last_idx = if child_row_count > 0 { child_row_count - 1 } else { 0 };
                 let mut col_offset = 0;
-                for col in &d_buf.header.columns {
-                    if col.header.col_id == child_col_id {
+                for col in &d_buf.columns {
+                    if col.col_id == child_col_id {
                         final_row_data[col_offset..col_offset+2].copy_from_slice(&child_header_offset.to_be_bytes());
                         final_row_data[col_offset+2..col_offset+4].copy_from_slice(&0u16.to_be_bytes());
                         final_row_data[col_offset+4..col_offset+6].copy_from_slice(&last_idx.to_be_bytes());
@@ -692,7 +746,7 @@ pub enum Rc {
     CapacityExceeded, RowCapacityZero, DataSizeMismatch, IndexOutOfBounds, ColumnNotFound(u16), BufferTooSmall,
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
     InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge,
-    DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,
+    DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,MaxVersionExceeded
 }
 
 impl fmt::Display for Rc {
@@ -727,6 +781,7 @@ impl fmt::Display for Rc {
             Rc::ColumnSizeMismatch => write!(f, "ColumnSizeMismatch"),
             Rc::ExtraColumnInSecondDBuf => write!(f, "ExtraColumnInSecondDBuf"),
             Rc::MissingColumnInSecondDBuf => write!(f, "MissingColumnInSecondDBuf"),
+            Rc::MaxVersionExceeded=> write!(f, "MaxVersionExceeded"),
         }
     }
 }
@@ -735,12 +790,27 @@ impl fmt::Display for Rc {
 pub enum Fe {
     NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
     GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
-    CompareStructure,
+    CompareStructure,Calculate_build_d_buf_from_structure
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test] fn t2A() {
+
+        let users = vec![
+            crate::tests::User { id: 1, name: "Charlie".to_string(), orders: vec![] },
+            crate::tests::User { id: 2, name: "Charlie".to_string(), orders: ovec![] },
+        ];
+        let d_buf = new(&users, 0,3).unwrap();
+        assert_eq!(d_buf.header.d_buf_id, 1002);
+        assert_eq!(d_buf.header.row_count, 2);
+
+        let raw_data = d_buf.clone().into_raw_bytes();
+        let d_buf_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
+    }
+
     fn c() -> Vec<ColumnHeader> { vec![ColumnHeader::new(1, ColumnType::U8).unwrap(), ColumnHeader::new(2, ColumnType::U16).unwrap(), ColumnHeader::new(3, ColumnType::U32).unwrap()] }
     fn d() -> DBuf { DBuf::new(1, c(), 100).unwrap() }
     #[test] fn t1() { assert_eq!(ColumnType::Boolean.size_of(), 1); assert_eq!(ColumnType::Child.size_of(), 6); }
@@ -749,11 +819,11 @@ mod tests {
     #[test] fn t4() { assert!(!ColumnType::Child.requires_size_field()); }
     #[test] fn t5() { assert_eq!(ColumnType::from_type_id(14, None).unwrap(), ColumnType::Child); }
     #[test] fn t6() { assert!(ColumnHeader::new(4, ColumnType::Child).is_ok()); }
-    #[test] fn t7() { let cols: Vec<Column> = c().into_iter().map(Column::new).collect(); let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap(); assert_eq!(h.row_size, 7); }
-    #[test] fn t8() { let cols = vec![Column::new(ColumnHeader::new(1, ColumnType::U32).unwrap()), Column::new(ColumnHeader::new(2, ColumnType::Child).unwrap())]; let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap(); assert_eq!(h.row_size, 10); }
+    #[test] fn t7() { let cols: Vec<ColumnHeader> = c(); let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap(); assert_eq!(h.row_size, 7); }
+    #[test] fn t8() { let cols = vec![ColumnHeader::new(1, ColumnType::U32).unwrap(), ColumnHeader::new(2, ColumnType::Child).unwrap()]; let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap(); assert_eq!(h.row_size, 10); }
     #[test] fn t9() { let d = d(); assert_eq!(d.header.d_buf_id, 1); }
     #[test] fn t23_token_flags_in_header() {
-        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let cols: Vec<ColumnHeader> = c();
         let app_token = vec![1u8, 2, 3, 4];
         let user_token = vec![5u8, 6, 7, 8, 9];
         let h = DBufHeader::new(1, cols, 100, true, true, true, app_token.clone(), user_token.clone()).unwrap();
@@ -764,7 +834,7 @@ mod tests {
         assert_eq!(h.user_token, user_token);
     }
     #[test] fn t24_token_serialization() {
-        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let cols: Vec<ColumnHeader> = c();
         let app_token = vec![1u8, 2, 3, 4];
         let user_token = vec![5u8, 6, 7, 8, 9];
         let h = DBufHeader::new(1, cols, 100, true, true, false, app_token.clone(), user_token.clone()).unwrap();
@@ -777,7 +847,7 @@ mod tests {
         assert_eq!(h2.user_token, user_token);
     }
     #[test] fn t25_no_tokens() {
-        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let cols: Vec<ColumnHeader> = c();
         let h = DBufHeader::new(1, cols, 100, false, false, false, Vec::new(), Vec::new()).unwrap();
         let bytes = h.to_bytes();
         let h2 = DBufHeader::from_bytes(&bytes).unwrap();
@@ -788,7 +858,7 @@ mod tests {
         assert_eq!(h2.user_token.len(), 0);
     }
     #[test] fn t26_only_app_token() {
-        let cols: Vec<Column> = c().into_iter().map(Column::new).collect();
+        let cols: Vec<ColumnHeader> = c();
         let app_token = vec![10u8, 20, 30];
         let h = DBufHeader::new(1, cols, 100, true, false, false, app_token.clone(), Vec::new()).unwrap();
         let bytes = h.to_bytes();
@@ -874,7 +944,7 @@ mod tests {
     struct User { id: u32, name: String, orders: Vec<Order> }
     impl IntoDBuf for User {
         fn d_buf_id(&self) -> u16 { 1002 }
-        fn columns(&self) -> Vec<ColumnHeader> { 
+        fn columns(&self) -> Vec<ColumnHeader> {
             vec![
                 ColumnHeader::new(1, ColumnType::U32).unwrap(),
                 ColumnHeader::new(2, ColumnType::Char(50)).unwrap(),
@@ -967,15 +1037,15 @@ mod tests {
         assert_eq!(d_buf.header.row_count, 2);
         
         let raw_data = d_buf.clone().into_raw_bytes();
-        let d_buf_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
+        let d_buf_from_raw = DBuf::from_bytes(raw_data).unwrap();
         assert_eq!(d_buf.header.d_buf_id, d_buf_from_raw.header.d_buf_id);
         assert_eq!(d_buf.header.row_count, d_buf_from_raw.header.row_count);
         assert_eq!(d_buf.header.row_size, d_buf_from_raw.header.row_size);
-        assert_eq!(d_buf.header.columns.len(), d_buf_from_raw.header.columns.len());
+        assert_eq!(d_buf.columns.len(), d_buf_from_raw.columns.len());
         
-        for (orig_col, new_col) in d_buf.header.columns.iter().zip(d_buf_from_raw.header.columns.iter()) {
-            assert_eq!(orig_col.header.col_id, new_col.header.col_id);
-            assert_eq!(orig_col.header.col_type, new_col.header.col_type);
+        for (orig_col, new_col) in d_buf.columns.iter().zip(d_buf_from_raw.columns.iter()) {
+            assert_eq!(orig_col.col_id, new_col.col_id);
+            assert_eq!(orig_col.col_type, new_col.col_type);
         }
         
         let pretty = d_buf.pretty_print();
@@ -993,7 +1063,7 @@ mod tests {
         let d_buf = build_d_buf_from_structure(&products2, 16).unwrap();
         
         let raw_data = d_buf.clone().into_raw_bytes();
-        let d_buf_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
+        let d_buf_from_raw = DBuf::from_bytes(raw_data).unwrap();
         assert_eq!(d_buf.header.d_buf_id, d_buf_from_raw.header.d_buf_id);
         assert_eq!(d_buf.header.row_count, d_buf_from_raw.header.row_count);
         
@@ -1016,7 +1086,7 @@ mod tests {
         assert_eq!(rc.header.row_count, 1);
         
         let raw_data = p.clone().into_raw_bytes();
-        let p_from_raw = DBuf::build_dbuff_from_rawdata(raw_data).unwrap();
+        let p_from_raw = DBuf::from_bytes(raw_data).unwrap();
         assert_eq!(p.header.d_buf_id, p_from_raw.header.d_buf_id);
         assert_eq!(p.header.row_count, p_from_raw.header.row_count);
         
