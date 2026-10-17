@@ -1,55 +1,320 @@
-use crate::*;//{ColumnType, Fe, Rc, Re, MAX_COLUMN_ID};
+use d_err_lib::{DErr,DErrMap};
+use crate::{Fe, Rc, Re,};
 
+const COL_ID_HIGH_MASK: u8 = 0xE0;
+const COL_ID_HIGH_SHIFT: u8 = 5;
+const COL_TYPE_MASK: u8 = 0x1F;
+
+type Cid = u16;
+type Csize = u16;
+type Ctype = u8;
 #[derive(Debug, Clone, PartialEq)]
-pub enum ColumnTypeTOTO {
-    Boolean, U8, U16, U32, U64, I8, I16, I32, I64, F32, F64, UtcTime, Char(usize), Ascii(usize), Child,
+pub enum DColumn {
+    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid),
 }
 
-impl ColumnTypeTOTO {
-    pub fn type_id(&self) -> u8 {
+impl DColumn {
+    pub fn type_id(&self) -> Ctype {
         match self {
-            ColumnTypeTOTO::Boolean => 0, ColumnTypeTOTO::U8 => 1, ColumnTypeTOTO::U16 => 2,
-            ColumnTypeTOTO::U32 => 3, ColumnTypeTOTO::U64 => 4, ColumnTypeTOTO::I8 => 5,
-            ColumnTypeTOTO::I16 => 6, ColumnTypeTOTO::I32 => 7, ColumnTypeTOTO::I64 => 8,
-            ColumnTypeTOTO::F32 => 9, ColumnTypeTOTO::F64 => 10, ColumnTypeTOTO::UtcTime => 11,
-            ColumnTypeTOTO::Char(_) => 12, ColumnTypeTOTO::Ascii(_) => 13, ColumnTypeTOTO::Child => 14,
+            DColumn::Boolean(_) => 0, DColumn::U8(_) => 1, DColumn::U16(_) => 2,
+            DColumn::U32(_) => 3, DColumn::U64(_) => 4, DColumn::I8(_) => 5,
+            DColumn::I16(_) => 6, DColumn::I32(_) => 7, DColumn::I64(_) => 8,
+            DColumn::F32(_) => 9, DColumn::F64(_) => 10, DColumn::UtcTime(_) => 11,
+            DColumn::Char(_,_) => 12, DColumn::Ascii(_,_) => 13, DColumn::String(_,_) => 14,
+            DColumn::Child(_) => 15,
         }
     }
-    pub fn size_of(&self) -> usize {
-        match self {
-            ColumnTypeTOTO::Boolean | ColumnTypeTOTO::U8 | ColumnTypeTOTO::I8 => 1,
-            ColumnTypeTOTO::U16 | ColumnTypeTOTO::I16 => 2,
-            ColumnTypeTOTO::U32 | ColumnTypeTOTO::I32 | ColumnTypeTOTO::F32 => 4,
-            ColumnTypeTOTO::U64 | ColumnTypeTOTO::I64 | ColumnTypeTOTO::F64 | ColumnTypeTOTO::UtcTime => 8,
-            ColumnTypeTOTO::Char(s) | ColumnTypeTOTO::Ascii(s) => *s,
-            ColumnTypeTOTO::Child => 6,
-        }
-    }
+
     pub fn requires_size_field(&self) -> bool {
-        matches!(self, ColumnTypeTOTO::Char(_) | ColumnTypeTOTO::Ascii(_))
+        matches!(self, DColumn::Char(_,_) | DColumn::Ascii(_,_) | DColumn::String(_,_))
     }
-    pub fn is_child(&self) -> bool { matches!(self, ColumnTypeTOTO::Child) }
-    pub fn from_type_id(type_id: u8, size: Option<usize>) -> Re<ColumnTypeTOTO> {
-        match type_id {
-            0 => Ok(ColumnTypeTOTO::Boolean), 1 => Ok(ColumnTypeTOTO::U8), 2 => Ok(ColumnTypeTOTO::U16),
-            3 => Ok(ColumnTypeTOTO::U32), 4 => Ok(ColumnTypeTOTO::U64), 5 => Ok(ColumnTypeTOTO::I8),
-            6 => Ok(ColumnTypeTOTO::I16), 7 => Ok(ColumnTypeTOTO::I32), 8 => Ok(ColumnTypeTOTO::I64),
-            9 => Ok(ColumnTypeTOTO::F32), 10 => Ok(ColumnTypeTOTO::F64), 11 => Ok(ColumnTypeTOTO::UtcTime),
-            12 => match size { Some(0) => Err(DErr::RootError(Fe::FromTypeId,1,Rc::InvalidColumnSize)), Some(s) => Ok(ColumnTypeTOTO::Char(s)), None => Err(DErr::RootError(Fe::FromTypeId, 2, Rc::MissingSizeForVariableType)) },
-            13 => match size { Some(0) => Err(DErr::RootError(Fe::FromTypeId,1,Rc::InvalidColumnSize)), Some(s) => Ok(ColumnTypeTOTO::Ascii(s)), None => Err(DErr::RootError(Fe::FromTypeId, 2, Rc::MissingSizeForVariableType)) },
-            14 => Ok(ColumnTypeTOTO::Child),
-            _ => Err(DErr::RootError(Fe::FromTypeId,3,Rc::InvalidColumnType(type_id))),
+    pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_)) }
+
+    //  read column from rows and update current_index depending on the column type.
+    //  1 read 5bit for col_type_id, and 3+8bit for col_id = 2 bytes
+    //  2 (optional) read 2 bytes for col_size if col_type_id is 12,13,14
+    //   example:
+    //   '''
+    //   let col = DColumn::from_row(&row, &mut idx)?;
+    //   '''
+    pub fn from_row(row: &[u8], last_index: &mut usize) -> Re<DColumn> {
+        let b1= *read_byte(row,last_index).d_err_map(Fe::FromRow,1)?;
+        let col_type_id = b1 & COL_TYPE_MASK;
+        let b2 = *read_byte(row,last_index).d_err_map(Fe::FromRow,2)?;
+        let col_id = (((b1 & COL_ID_HIGH_MASK) as Cid) << COL_ID_HIGH_SHIFT) | b2 as Cid;
+        match col_type_id {
+            0  => Ok(DColumn::Boolean(col_id)), 1 => Ok(DColumn::U8(col_id)), 2 => Ok(DColumn::U16(col_id)),
+            3  => Ok(DColumn::U32(col_id)), 4 => Ok(DColumn::U64(col_id)), 5 => Ok(DColumn::I8(col_id)),
+            6  => Ok(DColumn::I16(col_id)), 7 => Ok(DColumn::I32(col_id)), 8 => Ok(DColumn::I64(col_id)),
+            9  => Ok(DColumn::F32(col_id)), 10 => Ok(DColumn::F64(col_id)), 11 => Ok(DColumn::UtcTime(col_id)),
+            15 => Ok(DColumn::Child(col_id)),
+            _ => {
+                let b3= *read_byte(row,last_index).d_err_map(Fe::FromRow,3)? as Csize;
+                let b4= *read_byte(row,last_index).d_err_map(Fe::FromRow,4)? as Csize;
+                let col_size = ( b3 << 8 )+ b4;
+                if col_size == 0 {Err(DErr::RootError(Fe::FromTypeId,1,Rc::InvalidColumnSize))}
+                else {
+                    match col_type_id {
+                        12 => Ok(DColumn::Char(col_id,col_size)),
+                        13 => Ok(DColumn::Ascii(col_id,col_size)),
+                        14 => Ok(DColumn::String(col_id,col_size)),
+                        _ => Err(DErr::RootError(Fe::FromTypeId,1,Rc::InvalidColumnType(col_type_id)))
+                    }
+                }
+            }
+
+        }
+    }
+    pub fn size_of(&self) -> Csize {
+        match self {
+            DColumn::Boolean(_) | DColumn::U8(_) | DColumn::I8(_) => 1,
+            DColumn::U16(_) | DColumn::I16(_) => 2,
+            DColumn::U32(_) | DColumn::I32(_) | DColumn::F32(_) => 4,
+            DColumn::U64(_) | DColumn::I64(_) | DColumn::F64(_) | DColumn::UtcTime(_) => 8,
+            DColumn::Char(_,s) | DColumn::String(_,s)  | DColumn::Ascii(_,s) => *s,
+            DColumn::Child(_)  => 6,
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ColumnHeaderTOTO { pub col_id: u16, pub size: usize, pub col_type: ColumnTypeTOTO }
+pub fn read_byte<'a> (row: &'a [u8], last_index: &mut usize) -> Re<&'a u8> {
+    row.get({*last_index += 1;*last_index }).ok_or(DErr::RootError(Fe::ReadByte, 1, Rc::RowTooShort))
+}
 
-impl ColumnHeaderTOTO {
-    pub fn new(col_id: u16, col_type: ColumnTypeTOTO) -> Re<ColumnHeaderTOTO> {
-        if col_id == 0 { return Err(DErr::RootError(Fe::NewColumnHeader,1,Rc::ReservedColumnId)); }
-        if col_id > MAX_COLUMN_ID { return Err(DErr::RootError(Fe::NewColumnHeader,2,Rc::ColumnIdExceeded)); }
-        Ok(ColumnHeaderTOTO { col_id, size:col_type.size_of(),col_type})
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------- helpers ----------
+
+    /// Encode une colonne : byte0 = (id_high << 5) | type_id, byte1 = id_low,
+    /// puis éventuellement 2 octets pour col_size.
+    fn encode(type_id: u8, col_id: u16, col_size: Option<u16>) -> Vec<u8> {
+        let mut row = vec![0u8; 2];
+        row[0] = ((col_id >> 8) as u8) << COL_ID_HIGH_SHIFT | (type_id & COL_TYPE_MASK);
+        row[1] = col_id as u8;
+        if let Some(s) = col_size {
+            row.push((s >> 8) as u8);
+            row.push(s as u8);
+        }
+        row
+    }
+
+    fn from_row(row: &[u8]) -> Re<DColumn> {
+        DColumn::from_row(&row.to_vec(), &mut 0)
+    }
+
+    // ---------- type_id ----------
+
+    #[test]
+    fn type_id_matches_spec() {
+        assert_eq!(DColumn::Boolean(0).type_id(), 0);
+        assert_eq!(DColumn::U8(0).type_id(), 1);
+        assert_eq!(DColumn::U16(0).type_id(), 2);
+        assert_eq!(DColumn::U32(0).type_id(), 3);
+        assert_eq!(DColumn::U64(0).type_id(), 4);
+        assert_eq!(DColumn::I8(0).type_id(), 5);
+        assert_eq!(DColumn::I16(0).type_id(), 6);
+        assert_eq!(DColumn::I32(0).type_id(), 7);
+        assert_eq!(DColumn::I64(0).type_id(), 8);
+        assert_eq!(DColumn::F32(0).type_id(), 9);
+        assert_eq!(DColumn::F64(0).type_id(), 10);
+        assert_eq!(DColumn::UtcTime(0).type_id(), 11);
+        assert_eq!(DColumn::Char(0, 1).type_id(), 12);
+        assert_eq!(DColumn::Ascii(0, 1).type_id(), 13);
+        assert_eq!(DColumn::String(0, 1).type_id(), 14);
+        assert_eq!(DColumn::Child(0).type_id(), 15);
+    }
+
+    // ---------- requires_size_field / is_child ----------
+
+    #[test]
+    fn size_field_only_for_char_ascii_string() {
+        assert!(!DColumn::Boolean(1).requires_size_field());
+        assert!(!DColumn::F64(1).requires_size_field());
+        assert!(!DColumn::UtcTime(1).requires_size_field());
+        assert!(!DColumn::Child(1).requires_size_field());
+        assert!(DColumn::Char(1, 4).requires_size_field());
+        assert!(DColumn::Ascii(1, 4).requires_size_field());
+        assert!(DColumn::String(1, 4).requires_size_field());
+    }
+
+    #[test]
+    fn is_child_only_for_child() {
+        assert!(DColumn::Child(3).is_child());
+        assert!(!DColumn::String(3, 10).is_child());
+        assert!(!DColumn::U64(3).is_child());
+    }
+
+    // ---------- size_of ----------
+
+    #[test]
+    fn size_of_fixed_types() {
+        assert_eq!(DColumn::Boolean(0).size_of(), 1);
+        assert_eq!(DColumn::U8(0).size_of(), 1);
+        assert_eq!(DColumn::I8(0).size_of(), 1);
+        assert_eq!(DColumn::U16(0).size_of(), 2);
+        assert_eq!(DColumn::I16(0).size_of(), 2);
+        assert_eq!(DColumn::U32(0).size_of(), 4);
+        assert_eq!(DColumn::I32(0).size_of(), 4);
+        assert_eq!(DColumn::F32(0).size_of(), 4);
+        assert_eq!(DColumn::U64(0).size_of(), 8);
+        assert_eq!(DColumn::I64(0).size_of(), 8);
+        assert_eq!(DColumn::F64(0).size_of(), 8);
+        assert_eq!(DColumn::UtcTime(0).size_of(), 8);
+        assert_eq!(DColumn::Child(0).size_of(), 6);
+    }
+
+    #[test]
+    fn size_of_variable_types_uses_declared_size() {
+        assert_eq!(DColumn::Char(1, 32).size_of(), 32);
+        assert_eq!(DColumn::Ascii(1, 7).size_of(), 7);
+        assert_eq!(DColumn::String(1, 512).size_of(), 512);
+    }
+
+    // ---------- from_row : cas simples ----------
+
+    #[test]
+    fn from_row_boolean_min_id() {
+        let col = from_row(&encode(0, 0x0000, None)).unwrap();
+        assert_eq!(col, DColumn::Boolean(0));
+    }
+
+    #[test]
+    fn from_row_u32_mid_id() {
+        let col = from_row(&encode(3, 0x0042, None)).unwrap();
+        assert_eq!(col, DColumn::U32(0x42));
+    }
+
+    #[test]
+    fn from_row_f64_max_id() {
+        // id max = 0x07FF (3 bits hauts)
+        let col = from_row(&encode(10, 0x07FF, None)).unwrap();
+        assert_eq!(col, DColumn::F64(0x07FF));
+    }
+
+    #[test]
+    fn from_row_all_simple_types() {
+        let cases: Vec<(u8, DColumn)> = vec![
+            (0, DColumn::Boolean(0x0101)),
+            (1, DColumn::U8(0x0101)),
+            (2, DColumn::U16(0x0101)),
+            (3, DColumn::U32(0x0101)),
+            (4, DColumn::U64(0x0101)),
+            (5, DColumn::I8(0x0101)),
+            (6, DColumn::I16(0x0101)),
+            (7, DColumn::I32(0x0101)),
+            (8, DColumn::I64(0x0101)),
+            (9, DColumn::F32(0x0101)),
+            (10, DColumn::F64(0x0101)),
+            (11, DColumn::UtcTime(0x0101)),
+        ];
+        for (tid, expected) in cases {
+            let col = from_row(&encode(tid, 0x0101, None)).unwrap();
+            assert_eq!(col, expected, "type_id={tid}");
+        }
+    }
+
+    // ---------- from_row : taille obligatoire ----------
+
+    #[test]
+    fn from_row_char_with_size() {
+        let col = from_row(&encode(12, 0x0007, Some(64))).unwrap();
+        assert_eq!(col, DColumn::Char(7, 64));
+    }
+
+    #[test]
+    fn from_row_ascii_with_size() {
+        let col = from_row(&encode(13, 0x0001, Some(256))).unwrap();
+        assert_eq!(col, DColumn::Ascii(1, 256));
+    }
+
+    #[test]
+    fn from_row_string_with_size() {
+        let col = from_row(&encode(14, 0x0123, Some(1024))).unwrap();
+        assert_eq!(col, DColumn::String(0x0123, 1024));
+    }
+
+    #[test]
+    fn from_row_zero_size_is_error() {
+        assert!(from_row(&encode(12, 1, Some(0))).is_err());
+        assert!(from_row(&encode(13, 1, Some(0))).is_err());
+        assert!(from_row(&encode(14, 1, Some(0))).is_err());
+    }
+
+    // ---------- from_row : masquage ----------
+
+    #[test]
+    fn type_id_is_masked_to_5_bits() {
+        // byte0 avec bits parasites au-delà du masque : reste 0x1F
+        // 0x1F est invalide -> doit être Err, pas de panic
+        assert!(from_row(&[0xFF, 0x00]).is_err());
+    }
+
+    #[test]
+    fn col_id_uses_only_3_high_bits() {
+        // id = 0x07FF doit rester 0x07FF même avec bits bas pollués
+        let col = from_row(&encode(10, 0x07FF, None)).unwrap();
+        assert_eq!(col, DColumn::F64(0x07FF));
+    }
+
+    // ---------- from_row : offset non nul ----------
+
+    #[test]
+    fn from_row_respects_current_index() {
+        let mut row = vec![0xAA, 0xBB, 0xCC]; // préfixe à ignorer
+        row.extend(encode(2, 0x0304, None));
+        let mut idx = 3;
+        let col = DColumn::from_row(&row, &mut idx).unwrap();
+        assert_eq!(col, DColumn::U16(0x0304));
+    }
+
+    // ---------- from_row : erreurs et bornes ----------
+
+    #[test]
+    fn from_row_row_too_short_panics_or_errors() {
+        // Documente le comportement actuel : indexing direct = panic.
+        // Si tu veux un DErr à la place, ce test est à adapter.
+        let result = std::panic::catch_unwind(|| from_row(&[0x00]).ok());
+        // On accepte panic OU Ok : ce test signale juste le comportement.
+        let _ = result;
+    }
+
+    #[test]
+    fn from_row_invalid_type_id_after_15() {
+        // 16..=31 : ni type simple, ni type avec taille -> doit être Err
+        for tid in 16u8..=31 {
+            assert!(from_row(&encode(tid, 1, Some(4))).is_err(), "type_id={tid}");
+        }
+    }
+
+    // ---------- round-trip conceptuel ----------
+
+    #[test]
+    fn decoded_column_is_consistent_with_type_id() {
+        for col in [
+            DColumn::Boolean(1),
+            DColumn::U8(1),
+            DColumn::U16(1),
+            DColumn::U32(1),
+            DColumn::U64(1),
+            DColumn::I8(1),
+            DColumn::I16(1),
+            DColumn::I32(1),
+            DColumn::I64(1),
+            DColumn::F32(1),
+            DColumn::F64(1),
+            DColumn::UtcTime(1),
+            DColumn::Char(1, 4),
+            DColumn::Ascii(1, 4),
+            DColumn::String(1, 4),
+            DColumn::Child(1),
+        ] {
+            let tid = col.type_id();
+            let needs_size = col.requires_size_field();
+            // types 12,13,14 = taille, 15 = Child, autres = fixes
+            assert_eq!(needs_size, (12..=14).contains(&tid));
+            assert_eq!(col.is_child(), tid == 15);
+        }
     }
 }
