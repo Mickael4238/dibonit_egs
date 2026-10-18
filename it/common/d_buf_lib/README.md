@@ -17,7 +17,7 @@ The DBuf consists of a **header** and **raw values**, both stored in a single `V
 [BYTE_1: col_count_low(8b)]
 [BYTE_2-3: d_buf_id(16b)]
 [COLUMN_DEFINITIONS...]
-  [col_id_high(3b) + col_type(5b)][col_id_low(8b)]
+  [col_type(5b) + col_id_high(3b)][col_id_low(8b)]
   [OPTIONAL: col_size(16b) if type is Char or ASCII]
 [ROW_COUNT: u16]
 [ROW_CAPACITY: u16]

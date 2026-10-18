@@ -1,9 +1,8 @@
-use d_err_lib::{DErr,DErrMap};
+use d_err_lib::{DErr, DErrMap};
 use crate::{Fe, Rc, Re,};
 
-const COL_ID_HIGH_MASK: u8 = 0xE0;
-const COL_ID_HIGH_SHIFT: u8 = 5;
-const COL_TYPE_MASK: u8 = 0x1F;
+const COL_ID_HIGH_MASK: u8 = 0x07;
+const COL_TYPE_SHIFT :u8 = 3;
 
 type Cid = u16;
 type Csize = u16;
@@ -12,15 +11,24 @@ type Ctype = u8;
 pub enum DColumn {
     Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid),
 }
-
 impl DColumn {
     pub fn type_id(&self) -> Ctype {
         match self {
-            DColumn::Boolean(_) => 0, DColumn::U8(_) => 1, DColumn::U16(_) => 2,
-            DColumn::U32(_) => 3, DColumn::U64(_) => 4, DColumn::I8(_) => 5,
-            DColumn::I16(_) => 6, DColumn::I32(_) => 7, DColumn::I64(_) => 8,
-            DColumn::F32(_) => 9, DColumn::F64(_) => 10, DColumn::UtcTime(_) => 11,
-            DColumn::Char(_,_) => 12, DColumn::Ascii(_,_) => 13, DColumn::String(_,_) => 14,
+            DColumn::Boolean(_) => 0,
+            DColumn::U8(_) => 1,
+            DColumn::U16(_) => 2,
+            DColumn::U32(_) => 3,
+            DColumn::U64(_) => 4,
+            DColumn::I8(_) => 5,
+            DColumn::I16(_) => 6,
+            DColumn::I32(_) => 7,
+            DColumn::I64(_) => 8,
+            DColumn::F32(_) => 9,
+            DColumn::F64(_) => 10,
+            DColumn::UtcTime(_) => 11,
+            DColumn::Char(_,_) => 12,
+            DColumn::Ascii(_,_) => 13,
+            DColumn::String(_,_) => 14,
             DColumn::Child(_) => 15,
         }
     }
@@ -37,11 +45,12 @@ impl DColumn {
     //   '''
     //   let col = DColumn::from_row(&row, &mut idx)?;
     //   '''
-    pub fn from_row(row: &[u8], last_index: &mut usize) -> Re<DColumn> {
-        let b1= *read_byte(row,last_index).d_err_map(Fe::FromRow,1)?;
-        let col_type_id = b1 & COL_TYPE_MASK;
-        let b2 = *read_byte(row,last_index).d_err_map(Fe::FromRow,2)?;
-        let col_id = (((b1 & COL_ID_HIGH_MASK) as Cid) << COL_ID_HIGH_SHIFT) | b2 as Cid;
+    pub fn from_row(row: &[u8], current_index: &mut usize) -> Re<DColumn> {
+        let b1= *read_byte(row,current_index).d_err_map(Fe::FromRow,1)?;
+        let col_type_id = b1 >> COL_TYPE_SHIFT;
+        let b2 = *read_byte(row,current_index).d_err_map(Fe::FromRow,2)?;
+        let a =  ((b1 & COL_ID_HIGH_MASK) as Cid) << 8;
+        let col_id = ((b1 & COL_ID_HIGH_MASK) as Cid) << 8| b2 as Cid;
         match col_type_id {
             0  => Ok(DColumn::Boolean(col_id)), 1 => Ok(DColumn::U8(col_id)), 2 => Ok(DColumn::U16(col_id)),
             3  => Ok(DColumn::U32(col_id)), 4 => Ok(DColumn::U64(col_id)), 5 => Ok(DColumn::I8(col_id)),
@@ -49,8 +58,8 @@ impl DColumn {
             9  => Ok(DColumn::F32(col_id)), 10 => Ok(DColumn::F64(col_id)), 11 => Ok(DColumn::UtcTime(col_id)),
             15 => Ok(DColumn::Child(col_id)),
             _ => {
-                let b3= *read_byte(row,last_index).d_err_map(Fe::FromRow,3)? as Csize;
-                let b4= *read_byte(row,last_index).d_err_map(Fe::FromRow,4)? as Csize;
+                let b3= *read_byte(row,current_index).d_err_map(Fe::FromRow,3)? as Csize;
+                let b4= *read_byte(row,current_index).d_err_map(Fe::FromRow,4)? as Csize;
                 let col_size = ( b3 << 8 )+ b4;
                 if col_size == 0 {Err(DErr::RootError(Fe::FromTypeId,1,Rc::InvalidColumnSize))}
                 else {
@@ -76,9 +85,31 @@ impl DColumn {
         }
     }
 }
-
-pub fn read_byte<'a> (row: &'a [u8], last_index: &mut usize) -> Re<&'a u8> {
-    row.get({*last_index += 1;*last_index }).ok_or(DErr::RootError(Fe::ReadByte, 1, Rc::RowTooShort))
+/*
+impl fmt::Display for DColumn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DColumn::Boolean(id) => write!(f, "bool({})", id),
+            DColumn::U8(id) =>      write!(f, "u8({})"  , id),
+            DColumn::U16(id) =>     write!(f, "u({})"   , id),
+            DColumn::U32(id) =>     write!(f, "u({})"   , id),
+            DColumn::U64(id) =>     write!(f, "u({})"   , id),
+            DColumn::I8(id) =>      write!(f, "i({})"   , id),
+            DColumn::I16(id) =>     write!(f, "i({})"   , id),
+            DColumn::I32(id) =>     write!(f, "i({})"   , id),
+            DColumn::I64(id) =>     write!(f, "i({})"   , id),
+            DColumn::F32(id) =>     write!(f, "f({})"   , id),
+            DColumn::F64(id) =>     write!(f, "f({})"   , id),
+            DColumn::UtcTime(id) => write!(f, "utc({})" , id),
+            DColumn::Char(id,size) =>   write!(f, "char({})"  , id),
+            DColumn::Ascii(id,size) =>  write!(f, "ascii({})" , id),
+            DColumn::String(id,size) => write!(f, "string({})", id),
+            DColumn::Child(id) =>   write!(f, "child({})", id),
+        }
+    }
+}*/
+pub fn read_byte<'a> (row: &'a [u8], current_index: &mut usize) -> Re<&'a u8> {
+    row.get({*current_index += 1;*current_index -1 }).ok_or(DErr::RootError(Fe::ReadByte, 1, Rc::RowTooShort))
 }
 
 #[cfg(test)]
@@ -91,7 +122,7 @@ mod tests {
     /// puis éventuellement 2 octets pour col_size.
     fn encode(type_id: u8, col_id: u16, col_size: Option<u16>) -> Vec<u8> {
         let mut row = vec![0u8; 2];
-        row[0] = ((col_id >> 8) as u8) << COL_ID_HIGH_SHIFT | (type_id & COL_TYPE_MASK);
+        row[0] = (type_id << COL_TYPE_SHIFT) | ((col_id >> 8) as u8) ;
         row[1] = col_id as u8;
         if let Some(s) = col_size {
             row.push((s >> 8) as u8);
@@ -250,12 +281,16 @@ mod tests {
         // 0x1F est invalide -> doit être Err, pas de panic
         assert!(from_row(&[0xFF, 0x00]).is_err());
     }
-
+    //  read column from rows and update current_index depending on the column type.
+    //  1 read 5bit for col_type_id, and 3+8bit for col_id = 2 bytes
+    //  2 (optional) read 2 bytes for col_size if col_type_id is 12,13,14
     #[test]
     fn col_id_uses_only_3_high_bits() {
         // id = 0x07FF doit rester 0x07FF même avec bits bas pollués
-        let col = from_row(&encode(10, 0x07FF, None)).unwrap();
-        assert_eq!(col, DColumn::F64(0x07FF));
+        let col = from_row(&encode(1, 0x07FF, None)).unwrap();
+        let col2 = DColumn::from_row(&0b0000111111111111_u16.to_be_bytes(), &mut 0).unwrap();
+        assert_eq!(format!("{:?}", col), "U8(2047)");
+        assert_eq!(format!("{:?}", col),format!("{:?}", col2));
     }
 
     // ---------- from_row : offset non nul ----------
