@@ -1,17 +1,39 @@
 //use std::collections::HashMap;
 use crate::*;
+// note: the maximum size in byte for the table is:
+//    Rcapa * Rsize + 10 bytes (table structure) + columns structs todo(give the max size)
+//     = 0xFFFE0001 + 0xA                        +
+//     = 0xFFFE000B (included in u32)
+pub type Rcapa = u16;           // row capacity (number of rows)
+pub type Rsize = u16;           // row size (bytes)
+
+
 #[derive(Clone, Debug)]
-pub struct DBufHeaderTOTO {
-    pub d_buf_id: u16,
-    pub columns: Vec<ColumnHeaderTOTO>,
-    pub row_count: u16,
-    pub row_capacity: u16,
+pub struct DBufTable {
+    pub table_id: u16,
+    pub columns: Vec<DColumn>,
+    pub row_count:    Rcapa,
+    pub row_capacity: Rcapa,
     pub row_size: u16,
-    pub has_app_token: bool,
-    pub has_user_token: bool,
     pub has_index: bool,
-    pub app_token: Vec<u8>,
-    pub user_token: Vec<u8>,
+}
+/*
+impl DBufHeaderTOTO {
+    pub(crate) fn new(p0: u16, p1: Vec<DColumn>, p2: u16, p3: bool, p4: bool, p5: bool, p6: Vec<u8>, p7: Vec<u8>) -> Re<DBufHeaderTOTO> {
+        todo!()
+    }
+}
+
+impl DBufHeaderTOTO {
+    pub(crate) fn header_size(&self) -> usize {
+        todo!()
+    }
+}
+
+impl DBufHeaderTOTO {
+    pub(crate) fn from_bytes(p0: &Vec<u8>) -> Re<DBufHeaderTOTO> {
+        todo!()
+    }
 }
 
 impl DBufHeaderTOTO {
@@ -19,8 +41,22 @@ impl DBufHeaderTOTO {
         todo!()
     }
 }
+*/
 
-impl DBufHeaderTOTO {
+impl DBufTable {
+    pub fn new(table_id: u16, columns: Vec<DColumn>, row_capacity: u16, has_index: bool) -> Re<DBufTable> {
+        if table_id == 0 { return Err(DErr::RootError(Fe::NewDBufHeader,1,Rc::InvalidDBufId)); }
+        if columns.len() > MAX_COLUMN_COUNT as usize { return Err(DErr::RootError(Fe::NewDBufHeader,2,Rc::ColumnCountExceeded)); }
+        let mut seen_ids = HashMap::new();
+        for col in &columns {
+            if seen_ids.contains_key(&col.id()) { return Err(DErr::RootError(Fe::NewDBufHeader,3,Rc::DuplicateColumnId(&col.id()))); }
+            seen_ids.insert(col.id(), ());
+        }
+        let row_size: Rsize = columns.iter().map(|c| c.size_of()).sum();
+        if row_size > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,4,Rc::RowSizeExceeded)); }
+        Ok(DBufTable { table_id, columns, row_count: 0, row_capacity, row_size: row_size as u16, has_index })
+    }
+    /*
     pub fn header_size(&self) -> usize {
         let mut size = 10;
         if self.has_app_token {
@@ -32,20 +68,7 @@ impl DBufHeaderTOTO {
         for col in &self.columns { size += 2; if col.col_type.requires_size_field() { size += 2; } }
         size
     }
-    pub fn new(d_buf_id: u16, columns: Vec<ColumnHeaderTOTO>, row_capacity: u16, has_app_token: bool, has_user_token: bool, has_index: bool, app_token: Vec<u8>, user_token: Vec<u8>) -> Re<DBufHeaderTOTO> {
-        if d_buf_id == 0 { return Err(DErr::RootError(Fe::NewDBufHeader,1,Rc::InvalidDBufId)); }
-        if columns.len() > MAX_COLUMN_COUNT as usize { return Err(DErr::RootError(Fe::NewDBufHeader,2,Rc::ColumnCountExceeded)); }
-        let mut seen_ids = HashMap::new();
-        for col in &columns {
-            if seen_ids.contains_key(&col.col_id) { return Err(DErr::RootError(Fe::NewDBufHeader,3,Rc::DuplicateColumnId(col.col_id))); }
-            seen_ids.insert(col.col_id, ());
-        }
-        let row_size: usize = columns.iter().map(|c| c.size).sum();
-        if row_size > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,4,Rc::RowSizeExceeded)); }
-        if has_app_token && app_token.len() > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,5,Rc::TokenTooLarge)); }
-        if has_user_token && user_token.len() > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,6,Rc::TokenTooLarge)); }
-        Ok(DBufHeaderTOTO { d_buf_id, columns, row_count: 0, row_capacity, row_size: row_size as u16, has_app_token, has_user_token, has_index, app_token, user_token })
-    }
+
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -63,7 +86,7 @@ impl DBufHeaderTOTO {
             bytes.push(((col_id_high << COL_ID_HIGH_SHIFT) & COL_ID_HIGH_MASK) | (col_type_id & COL_TYPE_MASK));
             bytes.push(col.col_id as u8);
             if col.col_type.requires_size_field() {
-                if let ColumnTypeTOTO::Char(s) | ColumnTypeTOTO::Ascii(s) = col.col_type { bytes.extend_from_slice(&(s as u16).to_be_bytes()); }
+                if let DColumn::Char(s) | DColumn::Ascii(s) = col.col_type { bytes.extend_from_slice(&(s as u16).to_be_bytes()); }
             }
         }
         bytes.extend_from_slice(&self.row_count.to_be_bytes());
@@ -105,8 +128,8 @@ impl DBufHeaderTOTO {
                 if offset + 2 > bytes.len() { return Err(DErr::RootError(Fe::FromBytes,7,Rc::BufferTooSmall)); }
                 let s = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) as usize; offset += 2; Some(s)
             } else { None };
-            let col_type = ColumnTypeTOTO::from_type_id(col_type_id, size)?;
-            columns.push(ColumnHeaderTOTO::new(col_id, col_type )?);
+            let col_type = DColumn::from_type_id(col_type_id, size)?;
+            columns.push(DColumn::new(col_id, col_type )?);
         }
         if offset + 6 > bytes.len() { return Err(DErr::RootError(Fe::FromBytes,8,Rc::BufferTooSmall)); }
         let row_count = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
@@ -142,6 +165,5 @@ impl DBufHeaderTOTO {
         }
 
         Ok(DBufHeaderTOTO { d_buf_id, columns, row_count, row_capacity, row_size, has_app_token, has_user_token, has_index, app_token, user_token })
-    }
+    }*/
 }
-

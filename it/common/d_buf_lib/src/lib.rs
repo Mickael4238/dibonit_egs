@@ -1,13 +1,13 @@
 mod buffer;
 mod builder;
-mod header;
+mod table;
 mod column;
 mod serializer;
 
-use buffer::DBufTOTO;
+use buffer::{DBufTOTO,Bsize,Rsize};
 use builder::DBuftBuilderTOTO;
-use header::DBufHeaderTOTO;
-use column::{ColumnTypeTOTO,ColumnHeaderTOTO};
+use table::DBufTable;
+use column::{DColumn,Cid};
 use serializer::ToDBufTOTO;
 use d_err_lib::*;
 
@@ -765,11 +765,11 @@ fn fill_d_bufs(definitions: &[DBufDefinition], items: &[&dyn IntoDBuf], def_inde
 */
 #[derive(Debug)]
 pub enum Rc {
-    DuplicateColumnId(u16), ReservedColumnId, InvalidColumnType(u8), InvalidColumnSize, ColumnIdExceeded, InvalidDBufId, ColumnCountExceeded, RowSizeExceeded, MissingSizeForVariableType,
+    DuplicateColumnId(Cid), ReservedColumnId, InvalidColumnType(u8), InvalidColumnSize, ColumnIdExceeded, InvalidDBufId, ColumnCountExceeded, RowSizeExceeded, MissingSizeForVariableType,
     CapacityExceeded, RowCapacityZero, DataSizeMismatch, IndexOutOfBounds, ColumnNotFound(u16), BufferTooSmall,
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
     InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge,
-    DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,MaxVersionExceeded
+    DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,MaxVersionExceeded,RowTooShort
 }
 
 impl fmt::Display for Rc {
@@ -805,6 +805,7 @@ impl fmt::Display for Rc {
             Rc::ExtraColumnInSecondDBuf => write!(f, "ExtraColumnInSecondDBuf"),
             Rc::MissingColumnInSecondDBuf => write!(f, "MissingColumnInSecondDBuf"),
             Rc::MaxVersionExceeded=> write!(f, "MaxVersionExceeded"),
+            Rc::RowTooShort=> write!(f, "RowTooShort")
         }
     }
 }
@@ -813,7 +814,7 @@ impl fmt::Display for Rc {
 pub enum Fe {
     NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
     GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
-    CompareStructure,BuildHeaders
+    CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable
 }
 
 #[cfg(test)]

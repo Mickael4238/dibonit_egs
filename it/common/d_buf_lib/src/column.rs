@@ -1,42 +1,61 @@
 use d_err_lib::{DErr, DErrMap};
-use crate::{Fe, Rc, Re,};
+use crate::{Fe, Rc, Re,Bsize};
 
 const COL_ID_HIGH_MASK: u8 = 0x07;
 const COL_TYPE_SHIFT :u8 = 3;
 
-type Cid = u16;
-type Csize = u16;
-type Ctype = u8;
+pub(crate) type Cid = u16;     // type of column id
+type Csize = u16;   // type of column size
+type Ctype = u8;    // type of column type (note: only 5 bits)
 #[derive(Debug, Clone, PartialEq)]
 pub enum DColumn {
-    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid),
+    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Bsize),
 }
 impl DColumn {
     pub fn type_id(&self) -> Ctype {
         match self {
-            DColumn::Boolean(_) => 0,
-            DColumn::U8(_) => 1,
-            DColumn::U16(_) => 2,
-            DColumn::U32(_) => 3,
-            DColumn::U64(_) => 4,
-            DColumn::I8(_) => 5,
-            DColumn::I16(_) => 6,
-            DColumn::I32(_) => 7,
-            DColumn::I64(_) => 8,
-            DColumn::F32(_) => 9,
-            DColumn::F64(_) => 10,
-            DColumn::UtcTime(_) => 11,
-            DColumn::Char(_,_) => 12,
-            DColumn::Ascii(_,_) => 13,
-            DColumn::String(_,_) => 14,
-            DColumn::Child(_) => 15,
+            DColumn::Boolean(_)   => 0,  //ID
+            DColumn::U8     (_)   => 1,  //ID
+            DColumn::U16    (_)   => 2,  //ID
+            DColumn::U32    (_)   => 3,  //ID
+            DColumn::U64    (_)   => 4,  //ID
+            DColumn::I8     (_)   => 5,  //ID
+            DColumn::I16    (_)   => 6,  //ID
+            DColumn::I32    (_)   => 7,  //ID
+            DColumn::I64    (_)   => 8,  //ID
+            DColumn::F32    (_)   => 9,  //ID
+            DColumn::F64    (_)   => 10, //ID
+            DColumn::UtcTime(_)   => 11, //ID
+            DColumn::Char   (_,_) => 12, //ID SIZE
+            DColumn::Ascii  (_,_) => 13, //ID SIZE
+            DColumn::String (_,_) => 14, //ID SIZE
+            DColumn::Child  (_,_) => 15, //ID CHILD_POSITION
         }
     }
 
     pub fn requires_size_field(&self) -> bool {
         matches!(self, DColumn::Char(_,_) | DColumn::Ascii(_,_) | DColumn::String(_,_))
     }
-    pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_)) }
+    pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_,_)) }
+
+    pub fn id(&self) -> Cid{match self {
+            DColumn::Boolean(id)   => *id,
+            DColumn::U8     (id)   => *id,
+            DColumn::U16    (id)   => *id,
+            DColumn::U32    (id)   => *id,
+            DColumn::U64    (id)   => *id,
+            DColumn::I8     (id)   => *id,
+            DColumn::I16    (id)   => *id,
+            DColumn::I32    (id)   => *id,
+            DColumn::I64    (id)   => *id,
+            DColumn::F32    (id)   => *id,
+            DColumn::F64    (id)   => *id,
+            DColumn::UtcTime(id)   => *id,
+            DColumn::Char   (id,_) => *id,
+            DColumn::Ascii  (id,_) => *id,
+            DColumn::String (id,_) => *id,
+            DColumn::Child  (id,_) => *id,
+    }}
 
     //  read column from rows and update current_index depending on the column type.
     //  1 read 5bit for col_type_id, and 3+8bit for col_id = 2 bytes
@@ -45,10 +64,10 @@ impl DColumn {
     //   '''
     //   let col = DColumn::from_row(&row, &mut idx)?;
     //   '''
-    pub fn from_row(row: &[u8], current_index: &mut usize) -> Re<DColumn> {
-        let b1= *read_byte(row,current_index).d_err_map(Fe::FromRow,1)?;
+    pub fn from_row(row: &[u8], current_index: &mut Bsize) -> Re<DColumn> {
+        let b1= read_byte(row,current_index).d_err_map(Fe::FromRow,1)?;
         let col_type_id = b1 >> COL_TYPE_SHIFT;
-        let b2 = *read_byte(row,current_index).d_err_map(Fe::FromRow,2)?;
+        let b2 = read_byte(row,current_index).d_err_map(Fe::FromRow,2)?;
         let a =  ((b1 & COL_ID_HIGH_MASK) as Cid) << 8;
         let col_id = ((b1 & COL_ID_HIGH_MASK) as Cid) << 8| b2 as Cid;
         match col_type_id {
@@ -56,10 +75,13 @@ impl DColumn {
             3  => Ok(DColumn::U32(col_id)), 4 => Ok(DColumn::U64(col_id)), 5 => Ok(DColumn::I8(col_id)),
             6  => Ok(DColumn::I16(col_id)), 7 => Ok(DColumn::I32(col_id)), 8 => Ok(DColumn::I64(col_id)),
             9  => Ok(DColumn::F32(col_id)), 10 => Ok(DColumn::F64(col_id)), 11 => Ok(DColumn::UtcTime(col_id)),
-            15 => Ok(DColumn::Child(col_id)),
+            15 => {
+                let child_position = read_bsize2(row,current_index).d_err_map(Fe::FromRow,5)?;
+                Ok(DColumn::Child(col_id,child_position))
+            } ,
             _ => {
-                let b3= *read_byte(row,current_index).d_err_map(Fe::FromRow,3)? as Csize;
-                let b4= *read_byte(row,current_index).d_err_map(Fe::FromRow,4)? as Csize;
+                let b3= read_byte(row,current_index).d_err_map(Fe::FromRow,3)? as Csize;
+                let b4= read_byte(row,current_index).d_err_map(Fe::FromRow,4)? as Csize;
                 let col_size = ( b3 << 8 )+ b4;
                 if col_size == 0 {Err(DErr::RootError(Fe::FromTypeId,1,Rc::InvalidColumnSize))}
                 else {
@@ -81,7 +103,7 @@ impl DColumn {
             DColumn::U32(_) | DColumn::I32(_) | DColumn::F32(_) => 4,
             DColumn::U64(_) | DColumn::I64(_) | DColumn::F64(_) | DColumn::UtcTime(_) => 8,
             DColumn::Char(_,s) | DColumn::String(_,s)  | DColumn::Ascii(_,s) => *s,
-            DColumn::Child(_)  => 6,
+            DColumn::Child(_,_)  => 4,
         }
     }
 }
@@ -108,8 +130,17 @@ impl fmt::Display for DColumn {
         }
     }
 }*/
-pub fn read_byte<'a> (row: &'a [u8], current_index: &mut usize) -> Re<&'a u8> {
-    row.get({*current_index += 1;*current_index -1 }).ok_or(DErr::RootError(Fe::ReadByte, 1, Rc::RowTooShort))
+
+pub fn read_byte(row: &[u8], current_index: &mut Bsize) -> Re<u8> {
+    let b = row.get({*current_index += 1;*current_index -1 }).ok_or(DErr::RootError(Fe::ReadByte, 1, Rc::RowTooShort))?;
+    Ok(*b)
+}
+pub fn read_bsize2(row: &[u8], current_index: &mut Bsize) -> Re<Bsize> {
+    let b1= read_byte(row,current_index).d_err_map(Fe::FromRow,3)? as Bsize;
+    let b2= read_byte(row,current_index).d_err_map(Fe::FromRow,4)? as Bsize;
+    let b3= read_byte(row,current_index).d_err_map(Fe::FromRow,3)? as Bsize;
+    let b4= read_byte(row,current_index).d_err_map(Fe::FromRow,4)? as Bsize;
+    Ok(b1 << 24 | (2 << 16 | b3 << 8 | b4))
 }
 
 #[cfg(test)]
@@ -154,7 +185,7 @@ mod tests {
         assert_eq!(DColumn::Char(0, 1).type_id(), 12);
         assert_eq!(DColumn::Ascii(0, 1).type_id(), 13);
         assert_eq!(DColumn::String(0, 1).type_id(), 14);
-        assert_eq!(DColumn::Child(0).type_id(), 15);
+        assert_eq!(DColumn::Child(0,1).type_id(), 15);
     }
 
     // ---------- requires_size_field / is_child ----------
@@ -164,7 +195,7 @@ mod tests {
         assert!(!DColumn::Boolean(1).requires_size_field());
         assert!(!DColumn::F64(1).requires_size_field());
         assert!(!DColumn::UtcTime(1).requires_size_field());
-        assert!(!DColumn::Child(1).requires_size_field());
+        assert!(!DColumn::Child(1,0).requires_size_field());
         assert!(DColumn::Char(1, 4).requires_size_field());
         assert!(DColumn::Ascii(1, 4).requires_size_field());
         assert!(DColumn::String(1, 4).requires_size_field());
@@ -172,7 +203,7 @@ mod tests {
 
     #[test]
     fn is_child_only_for_child() {
-        assert!(DColumn::Child(3).is_child());
+        assert!(DColumn::Child(3,0).is_child());
         assert!(!DColumn::String(3, 10).is_child());
         assert!(!DColumn::U64(3).is_child());
     }
@@ -193,7 +224,7 @@ mod tests {
         assert_eq!(DColumn::I64(0).size_of(), 8);
         assert_eq!(DColumn::F64(0).size_of(), 8);
         assert_eq!(DColumn::UtcTime(0).size_of(), 8);
-        assert_eq!(DColumn::Child(0).size_of(), 6);
+        assert_eq!(DColumn::Child(0,3).size_of(), 4);
     }
 
     #[test]
@@ -343,7 +374,7 @@ mod tests {
             DColumn::Char(1, 4),
             DColumn::Ascii(1, 4),
             DColumn::String(1, 4),
-            DColumn::Child(1),
+            DColumn::Child(1,0),
         ] {
             let tid = col.type_id();
             let needs_size = col.requires_size_field();
