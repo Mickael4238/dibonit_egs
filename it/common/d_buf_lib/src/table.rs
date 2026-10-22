@@ -7,54 +7,39 @@ use crate::*;
 pub type Rcapa = u16;           // row capacity (number of rows)
 pub type Rsize = u16;           // row size (bytes)
 
-
+pub type Tid = u16;              // type for table ids
 #[derive(Clone, Debug)]
 pub struct DBufTable {
-    pub table_id: u16,
+    pub table_id: Tid,
     pub columns: Vec<DColumn>,
     pub row_count:    Rcapa,
     pub row_capacity: Rcapa,
     pub row_size: u16,
     pub has_index: bool,
 }
-/*
-impl DBufHeaderTOTO {
-    pub(crate) fn new(p0: u16, p1: Vec<DColumn>, p2: u16, p3: bool, p4: bool, p5: bool, p6: Vec<u8>, p7: Vec<u8>) -> Re<DBufHeaderTOTO> {
-        todo!()
-    }
-}
-
-impl DBufHeaderTOTO {
-    pub(crate) fn header_size(&self) -> usize {
-        todo!()
-    }
-}
-
-impl DBufHeaderTOTO {
-    pub(crate) fn from_bytes(p0: &Vec<u8>) -> Re<DBufHeaderTOTO> {
-        todo!()
-    }
-}
-
-impl DBufHeaderTOTO {
-    pub(crate) fn build_child_headers<T: ToDBufTOTO>(&self, p0: &&mut DBuftBuilderTOTO, p1: &&T) {
-        todo!()
-    }
-}
-*/
 
 impl DBufTable {
-    pub fn new(table_id: u16, columns: Vec<DColumn>, row_capacity: u16, has_index: bool) -> Re<DBufTable> {
+    pub fn new(table_id: Tid, columns: Vec<DColumn>, row_capacity: Rcapa, has_index: bool) -> Re<Self> {
         if table_id == 0 { return Err(DErr::RootError(Fe::NewDBufHeader,1,Rc::InvalidDBufId)); }
-        if columns.len() > MAX_COLUMN_COUNT as usize { return Err(DErr::RootError(Fe::NewDBufHeader,2,Rc::ColumnCountExceeded)); }
+        if columns.len() > MAX_COLUMN_NUM as usize { return Err(DErr::RootError(Fe::NewDBufHeader,2,Rc::ColumnCountExceeded)); }
         let mut seen_ids = HashMap::new();
         for col in &columns {
-            if seen_ids.contains_key(&col.id()) { return Err(DErr::RootError(Fe::NewDBufHeader,3,Rc::DuplicateColumnId(&col.id()))); }
+            if seen_ids.contains_key(&col.id()) { return Err(DErr::RootError(Fe::NewDBufHeader,3,Rc::DuplicateColumnId(col.id()))); }
             seen_ids.insert(col.id(), ());
         }
-        let row_size: Rsize = columns.iter().map(|c| c.size_of()).sum();
-        if row_size > u16::MAX as usize { return Err(DErr::RootError(Fe::NewDBufHeader,4,Rc::RowSizeExceeded)); }
-        Ok(DBufTable { table_id, columns, row_count: 0, row_capacity, row_size: row_size as u16, has_index })
+        //let row_size = columns.iter().map(|c| c.size_of()).sum();
+        let row_size :Rsize = columns.iter().try_fold(0 as Rsize, |acc, c| {
+            acc.checked_add(c.size_of())
+                .ok_or("Columns size overflowed u8 limit")
+        }).map_err(|_| DErr::RootError(Fe::NewDBufHeader,4,Rc::RowSizeExceeded))?;
+
+        Ok(Self { table_id, columns, row_count: 0, row_capacity, row_size, has_index })
+    }
+    pub(crate) fn from_bytes(p0: &Vec<u8>) -> Re<Self>  {
+        todo!()
+    }
+    pub(crate) fn header_size(&self) -> usize {
+        todo!()
     }
     /*
     pub fn header_size(&self) -> usize {

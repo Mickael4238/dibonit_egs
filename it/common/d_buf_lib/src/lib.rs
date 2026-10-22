@@ -8,7 +8,7 @@ use buffer::{DBufTOTO,Bsize,Rsize};
 use builder::DBuftBuilderTOTO;
 use table::DBufTable;
 use column::{DColumn,Cid};
-use serializer::ToDBufTOTO;
+use serializer::ToDBufStruct;
 use d_err_lib::*;
 
 
@@ -18,8 +18,7 @@ use std::collections::HashMap;
 
 const ROLLING_VERSION: u8 = 0;
 const MAX_ROLLING_VERSION: u8 = 3;
-const MAX_COLUMN_COUNT: u16 = 2047;
-const MAX_COLUMN_ID: u16 = 2047;
+const MAX_COLUMN_NUM: Cnum = 2047;
 const MAX_RECURSION_DEPTH: u8 = 16;
 const ROLLING_VERSION_MASK: u8 = 0x03;
 const COL_COUNT_HIGH_MASK: u8 = 0x1C;
@@ -30,6 +29,8 @@ const COL_TYPE_MASK: u8 = 0x1F;
 const HAS_APP_TOKEN_MASK: u8 = 0x20;
 const HAS_USER_TOKEN_MASK: u8 = 0x40;
 const HAS_INDEX_MASK: u8 = 0x80;
+
+type Cnum = u16; //type for column numbers, note that Cnum is not as big as u16, so we need to declare a MAX_COLUMN_NUM as it differs from Cnum::Max
 
 
 type Re<T> = Result<T, DErr<Fe, Rc>>;
@@ -814,7 +815,7 @@ impl fmt::Display for Rc {
 pub enum Fe {
     NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
     GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
-    CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable
+    CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable,OrderGetChildStructure,ProductGetChildStructure,CityGetChildStructure,BuildTable
 }
 
 #[cfg(test)]

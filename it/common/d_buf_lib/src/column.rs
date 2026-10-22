@@ -1,5 +1,6 @@
 use d_err_lib::{DErr, DErrMap};
 use crate::{Fe, Rc, Re,Bsize};
+use crate::buffer::Bpos;
 
 const COL_ID_HIGH_MASK: u8 = 0x07;
 const COL_TYPE_SHIFT :u8 = 3;
@@ -9,7 +10,7 @@ type Csize = u16;   // type of column size
 type Ctype = u8;    // type of column type (note: only 5 bits)
 #[derive(Debug, Clone, PartialEq)]
 pub enum DColumn {
-    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Bsize),
+    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Bpos),
 }
 impl DColumn {
     pub fn type_id(&self) -> Ctype {
