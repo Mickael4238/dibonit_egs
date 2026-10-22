@@ -1,0 +1,20 @@
+
+/// # DBUF Usage Example for the Get input / output (note the row_valuues are not used by the lib, only transfered to APP
+///
+/// ```
+/// DBufHeader name = CONTRAT_1 tocken_size = 1 (byte), tocken=155 names_max_size = 10 row_count = 2, row_capacity = 2* (size(u8) + 1 +5 ) ; row_size =  2* (size(u8) + 1 +5 )  (capacity and size may be different on some uses cases...)
+///     Colones =
+///     COL_A(u8) COL_B(char[1]) COL_C(char[5])
+/// ROW 1     A     10:12
+/// ROW 2     B     10:13
+/// ```
+
+/// # DBUF Usage Example for a Publish
+///
+/// ```
+/// DBufHeader name = CONTRAT_2 tocken_size = 2 (byte), tocken=850  names_max_size = 10 row_count = 2, row_capacity = 2* (size(u8) + 1 +5 ) ; row_size =  2* (size(u8) + 1 +5 )  (capacity and size may be different on some uses cases...)
+///     Colones =
+///     COL_D(i32) COL_E(char[1]) COL_F(char[5])
+/// ROW 1254892    G     10:12
+/// ROW 251547   H     10:13
+/// ```
