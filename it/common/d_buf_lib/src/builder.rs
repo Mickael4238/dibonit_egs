@@ -1,6 +1,6 @@
 use crate::*;
 use crate::buffer::Vsize;
-use crate::serializer::ToDBufStruct;
+use crate::serializer::{DBuffTableTrait, ToDBufStruct};
 use crate::table::Rcapa;
 
 pub struct DBuftBuilderTOTO {
@@ -19,6 +19,26 @@ pub struct DBuftBuilderTOTO {
 impl DBuftBuilderTOTO{
     pub fn new(d_buf_id : u16, rolling_version : Vsize,has_app_token : bool, has_user_token : bool, app_token : Vec<u8>, user_token : Vec<u8>,max_depth: u8 ) -> Self {
         Self {        d_buf_id,       rolling_version,        has_app_token,        has_user_token,        app_token,           user_token,          max_depth,tables: vec![], raw_values: vec![], current_size: 0, current_depth: 0 } // the children will never have tokens
+    }
+    pub fn build_tables(&mut self, table_in: &dyn DBuffTableTrait) -> Re<()> {
+        // Use instance method (delegates to static internally, no instance data used)
+        let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
+        let table: DBufTable = DBufTable::new(table_id, columns, 0,false)?;
+
+        // Collect child column IDs before pushing the table
+        let child_column_ids: Vec<_> = table.columns.iter()
+            .filter(|c| c.is_child())
+            .map(|c| c.id())
+            .collect();
+
+        self.push_table(table).d_err_map(Fe::BuildTable,1)?;
+
+        // Process children recursively
+        for cid in child_column_ids {
+            let child = table_in.get_children_table(cid).d_err_map(Fe::BuildHeaders,1)?;
+            self.build_tables(child.as_ref()).d_err_map(Fe::BuildTable,1)?;
+        }
+        Ok(())
     }
 
     pub fn build_tables_dyn(&mut self, structure: &dyn ToDBufStruct) -> Re<()> {
@@ -73,7 +93,7 @@ impl DBuftBuilderTOTO{
 #[cfg(test)]
 mod tests {
     use crate::buffer::Bpos;
-    use crate::serializer::{ToDBufStruct, ToDBufChildren};
+    use crate::serializer::{ToDBufStruct, DBuffTableTrait};
     use crate::table::Tid;
     use super::*;
 
@@ -90,27 +110,25 @@ mod tests {
             }
         }
     }
-    /*
-    impl ToDBufChildren for Tables {
-        fn get_dbuff_info  (&self)-> Re<(Tid,Vec<DColumn>)>{
+
+    impl DBuffTableTrait for Tables {
+        fn get_table_info  (&self)-> Re<(Tid,Vec<DColumn>)>{
             match self {
-                Tables::User => {
-                    Ok((self.id(), vec![
-                        DColumn::U32(1),
-                        DColumn::UtcTime(2),
-                        DColumn::Child(3, 0), // the buffer position of the child is not known yet
-                        DColumn::Child(4, 0), // the buffer position of the child is not known yet
-                    ]))
-                },
-                Tables::City => { City::get_dbuff_info() }
-                Tables::Order => { Order::get_dbuff_info() }
-                Tables::Product => { Product::get_dbuff_info() }
+                Tables::User => { User::get_dbuff_info_static() }
+                Tables::City => { City::get_dbuff_info_static() }
+                Tables::Order => { Order::get_dbuff_info_static() }
+                Tables::Product => { Product::get_dbuff_info_static() }
             }
         }
-        fn get_child_structure(&self, cid: Cid) -> Re<Box<dyn ToDBufChildren>> {
-            todo!()
+        fn get_children_table(&self, cid: Cid) -> Re<Box<dyn DBuffTableTrait>> {
+            match self {
+                Tables::User => { User::get_child_table_static(cid) }
+                Tables::City => { City::get_child_table_static(cid) }
+                Tables::Order => { Order::get_child_table_static(cid) }
+                Tables::Product => { Product::get_child_table_static(cid) }
+            }
         }
-    }*/
+    }
     #[derive(Clone)]
     pub struct Product {
         id: u32,
@@ -130,13 +148,16 @@ mod tests {
                 _ => { Err(DErr::RootError(Fe::ProductGetChildStructure, 1, Rc::ColumnNotFound(cid))) }
             }
         }
+        fn get_child_table_static(cid: Cid) -> Re<Box<dyn DBuffTableTrait>> where Self: Sized{
+            todo!()
+        }
         impl_dbuf_struct_instance_methods!();
     }
     #[derive(Clone)]
     struct Order { id: u32, date: u64, products: Vec<Product> }
     impl ToDBufStruct for  Order {
         fn get_dbuff_info_static() -> Re<(Tid,Vec<DColumn>)>{
-            Ok((1,vec![
+            Ok((Tables::Order.id(),vec![
                 DColumn::U32(1),
                 DColumn::UtcTime(2),
                 DColumn::Child(3,0),
@@ -145,6 +166,12 @@ mod tests {
         fn get_child_structure_static(cid: Cid) -> Re<Box<dyn ToDBufStruct>>{
             match cid{
                 3 => {Ok(Box::new(Product{id: 0,name :"n".to_string(), price : 10.0,}))}
+                _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
+            }
+        }
+        fn get_child_table_static(cid: Cid) -> Re<Box<dyn DBuffTableTrait>> where Self: Sized{
+            match cid{
+                3 => {Ok(Box::new(Tables::Product))}
                 _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
             }
         }
@@ -160,6 +187,11 @@ mod tests {
             ]))
         }
         fn get_child_structure_static(cid: Cid) -> Re<Box<dyn ToDBufStruct>>{
+            match cid {
+                _ => { Err(DErr::RootError(Fe::CityGetChildStructure, 1, Rc::ColumnNotFound(cid))) }
+            }
+        }
+        fn get_child_table_static(cid: Cid) -> Re<Box<dyn DBuffTableTrait>> where Self: Sized{
             match cid {
                 _ => { Err(DErr::RootError(Fe::CityGetChildStructure, 1, Rc::ColumnNotFound(cid))) }
             }
@@ -181,6 +213,13 @@ mod tests {
             match cid{
                 3 => {Ok(Box::new(Order{id: 0,date: 0, products: vec![],}))}
                 4 => {Ok(Box::new(City{id: 0, name: "Paris".to_string() }))}
+                _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
+            }
+        }
+        fn get_child_table_static(cid: Cid) -> Re<Box<dyn DBuffTableTrait>> where Self: Sized{
+            match cid{
+                3 => {Ok(Box::new(Tables::Order))}
+                4 => {Ok(Box::new(Tables::City))}
                 _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
             }
         }
@@ -228,6 +267,7 @@ mod tests {
         let mut builder = DBuftBuilderTOTO::new(0,ROLLING_VERSION,false,false,vec![],vec![],4);
         // Build table structure based on User type
         builder.build_tables_dyn(users.first().unwrap()).unwrap();
+        builder.build_tables(&Tables::User).unwrap();
         builder.build_rowvalues(&users).unwrap();
 
     }
