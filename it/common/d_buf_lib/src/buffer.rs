@@ -18,7 +18,7 @@ pub struct DBufTOTO {
 impl DBufTOTO {
     pub fn new<T: ToDBufStruct>(structure : &Vec<T>,d_buf_id : u16,has_app_token : bool, has_user_token : bool, app_token : Vec<u8>, user_token : Vec<u8>, max_depth: u8 ) -> Re<Self> {
         let mut builder = DBuftBuilderTOTO::new(d_buf_id,ROLLING_VERSION,has_app_token, has_user_token, app_token, user_token, max_depth);
-        builder.build_tables(structure).d_err_map(Fe::NewDBuf,1)?;
+        builder.build_tables_dyn(structure.first().unwrap()).d_err_map(Fe::NewDBuf,1)?;
         builder.build_rowvalues(structure).d_err_map(Fe::NewDBuf,2)?;
         builder.consume().d_err_map(Fe::NewDBuf,3)
     }
