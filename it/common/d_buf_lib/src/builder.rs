@@ -130,12 +130,7 @@ mod tests {
                 _ => { Err(DErr::RootError(Fe::ProductGetChildStructure, 1, Rc::ColumnNotFound(cid))) }
             }
         }
-        fn get_dbuff_info(&self) -> Re<(Tid, Vec<DColumn>)> {
-            Self::get_dbuff_info_static()
-        }
-        fn get_child_structure(&self, cid: Cid) -> Re<Box<dyn ToDBufStruct>> {
-            Self::get_child_structure_static(cid)
-        }
+        impl_dbuf_struct_instance_methods!();
     }
     #[derive(Clone)]
     struct Order { id: u32, date: u64, products: Vec<Product> }
@@ -153,12 +148,7 @@ mod tests {
                 _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
             }
         }
-        fn get_dbuff_info(&self) -> Re<(Tid,Vec<DColumn>)>{
-            Self::get_dbuff_info_static()
-        }
-        fn get_child_structure(&self, cid: Cid) -> Re<Box<dyn ToDBufStruct>>{
-            Self::get_child_structure_static(cid)
-        }
+        impl_dbuf_struct_instance_methods!();
     }
     #[derive(Clone)]
     struct City { id: u32, name: String }
@@ -174,12 +164,7 @@ mod tests {
                 _ => { Err(DErr::RootError(Fe::CityGetChildStructure, 1, Rc::ColumnNotFound(cid))) }
             }
         }
-        fn get_dbuff_info(&self) -> Re<(Tid,Vec<DColumn>)>{
-            Self::get_dbuff_info_static()
-        }
-        fn get_child_structure(&self, cid: Cid) -> Re<Box<dyn ToDBufStruct>>{
-            Self::get_child_structure_static(cid)
-        }
+        impl_dbuf_struct_instance_methods!();
     }
     #[derive(Clone)]
     struct User { id: u32, name: String, orders: Vec<Order> ,cities: Vec<City>}
@@ -199,12 +184,7 @@ mod tests {
                 _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
             }
         }
-        fn get_dbuff_info(&self) -> Re<(Tid,Vec<DColumn>)>{
-            Self::get_dbuff_info_static()
-        }
-        fn get_child_structure(&self, cid: Cid) -> Re<Box<dyn ToDBufStruct>>{
-            Self::get_child_structure_static(cid)
-        }
+        impl_dbuf_struct_instance_methods!();
     }
     fn build_users()-> Vec<User> {
         let alex_order1_products : Vec<Product>= vec![
