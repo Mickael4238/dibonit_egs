@@ -15,6 +15,7 @@ use d_err_lib::*;
 use std::fmt;
 use std::any::Any;
 use std::collections::HashMap;
+use crate::table::Rcapa;
 
 const ROLLING_VERSION: u8 = 0;
 const MAX_ROLLING_VERSION: u8 = 3;
@@ -770,7 +771,8 @@ pub enum Rc {
     CapacityExceeded, RowCapacityZero, DataSizeMismatch, IndexOutOfBounds, ColumnNotFound(u16), BufferTooSmall,
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
     InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge,
-    DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,MaxVersionExceeded,RowTooShort
+    DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,
+    MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa)
 }
 
 impl fmt::Display for Rc {
@@ -806,7 +808,8 @@ impl fmt::Display for Rc {
             Rc::ExtraColumnInSecondDBuf => write!(f, "ExtraColumnInSecondDBuf"),
             Rc::MissingColumnInSecondDBuf => write!(f, "MissingColumnInSecondDBuf"),
             Rc::MaxVersionExceeded=> write!(f, "MaxVersionExceeded"),
-            Rc::RowTooShort=> write!(f, "RowTooShort")
+            Rc::RowTooShort=> write!(f, "RowTooShort"),
+            Rc::InvalidRowIndex(i) => write!(f, "InvalidRowIndex({})", i),
         }
     }
 }
