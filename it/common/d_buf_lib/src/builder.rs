@@ -115,54 +115,31 @@ use crate::buffer::Bpos;
             }
         }
         fn get_children_table(&self, cid: Cid,rid : Rcapa) -> Re<DTableBox> {
-            let mut t = match self {
+            Ok(Box::new(match self {
                 Tables::User(dv)    => {
                     let user = dv.get(rid)?;
-                    let child = User::get_child_table_static( cid)?;
-                    let r = match child {
-                        Tables::User(_)    => { Tables::User(DVec::none()) }
-                        Tables::City(_)    => { Tables::City(user.cities) }
-                        Tables::Order(_)   => { Tables::Order(user.orders) }
-                        Tables::Product(_) => { Tables::Product(DVec::none()) }
-                    };
-                    r
+                    match cid {
+                        3 => Tables::Order(user.orders.clone()),
+                        4 => Tables::City(user.cities.clone()),
+                        _ => return Err(DErr::RootError(Fe::BuildTable, 1, Rc::ColumnNotFound(cid)))
+                    }
                 }
                 Tables::City(dv)    => {
                     let city = dv.get(rid)?;
-                    let child = City::get_child_table_static( cid)?;
-                    let r = match child {
-                        Tables::User(_)    => { Tables::User(DVec::none()) }
-                        Tables::City(_)    => { Tables::City(DVec::none()) }
-                        Tables::Order(_)   => { Tables::Order(DVec::none()) }
-                        Tables::Product(_) => { Tables::Product(DVec::none()) }
-                    };
-                    r
+                    return Err(DErr::RootError(Fe::CityGetChildStructure, 1, Rc::ColumnNotFound(cid)))
                 }
                 Tables::Order(dv)   => {
                     let order = dv.get(rid)?;
-                    let child = Order::get_child_table_static( cid)?;
-                    let r = match child {
-                        Tables::User(_)    => { Tables::User(DVec::none()) }
-                        Tables::City(_)    => { Tables::City(DVec::none()) }
-                        Tables::Order(_)   => { Tables::Order(DVec::none()) }
-                        Tables::Product(_) => { Tables::Product(order.products) }
-                    };
-                    r
+                    match cid {
+                        3 => Tables::Product(order.products.clone()),
+                        _ => return Err(DErr::RootError(Fe::OrderGetChildStructure, 1, Rc::ColumnNotFound(cid)))
+                    }
                 }
                 Tables::Product(dv) => {
                     let product = dv.get(rid)?;
-                    let child = Product::get_child_table_static( cid)?;
-                    let r = match child {
-                        Tables::User(_)    => { Tables::User(DVec::none()) }
-                        Tables::City(_)    => { Tables::City(DVec::none()) }
-                        Tables::Order(_)   => { Tables::Order(DVec::none()) }
-                        Tables::Product(_) => { Tables::Product(DVec::none()) }
-                    };
-                    r
+                    return Err(DErr::RootError(Fe::BuildTable, 1, Rc::ColumnNotFound(cid)))
                 }
-            };
-            Ok(Box::new(t))
-
+            }) as DTableBox)
         }
         fn get_capa(&self) -> Rcapa{
             match self{
@@ -254,6 +231,7 @@ use crate::buffer::Bpos;
         let mut alex_order1_products = DVec::new(2);
         alex_order1_products.push(Product{id: 0,name: "shoes".to_string(), price: 100.0,});
         alex_order1_products.push(Product{id: 1,name: "laptop".to_string(),price: 999.0,});
+        alex_order1_products.push(Product{id: 2,name: "toto".to_string(),price: 999.0,});
 
         let mut alex_order2_products= DVec::new(2);
         alex_order2_products.push(Product{id: 0,name: "shoes".to_string(), price: 100.0,});
