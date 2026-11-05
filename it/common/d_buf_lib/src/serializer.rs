@@ -19,7 +19,7 @@ pub trait DBuffTablesTraitType{
    // fn get_dvec<T: ToDBufStruct>(&self) -> &DVec<T>;
 }
 pub trait DBuffTablesTrait{
-    fn get_children_table(&self, cid: Cid) -> Re<DTableBox>;
+    fn get_children_table(&self, cid: Cid, rid :Rcapa) -> Re<DTableBox>;
     fn get_table_info(&self) -> Re<(Tid, Vec<DColumn>)>;
     fn get_capa(&self) -> Rcapa;
 

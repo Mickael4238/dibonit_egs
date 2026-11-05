@@ -23,7 +23,8 @@ impl DBuftBuilderTOTO{
     pub fn build_tables(&mut self, table_in: &DTableBox) -> Re<()> {
         // Use instance method (delegates to static internally, no instance data used)
         let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
-        let table: DBufTable = DBufTable::new(table_id, columns,table_in.get_capa(),false)?;
+        let capa = table_in.get_capa();
+        let table: DBufTable = DBufTable::new(table_id, columns,capa,false)?;
         // Collect child column IDs before pushing the table
         let child_column_ids: Vec<_> = table.columns.iter()
             .filter(|c| c.is_child())
@@ -34,8 +35,11 @@ impl DBuftBuilderTOTO{
 
         // Process children recursively
         for cid in child_column_ids {
-            let child_table = table_in.get_children_table(cid).d_err_map(Fe::BuildHeaders,1)?;
-            self.build_tables(&child_table).d_err_map(Fe::BuildTable,1)?;
+            for rid in 0..capa {
+                let child_table = table_in.get_children_table(cid,rid).d_err_map(Fe::BuildHeaders,1)?;
+
+                self.build_tables(&child_table).d_err_map(Fe::BuildTable,1)?;
+            }
         }
         Ok(())
     }
@@ -110,14 +114,54 @@ use crate::buffer::Bpos;
                 Tables::Product(_) => { Product::get_dbuff_info_static() }
             }
         }
-        fn get_children_table(&self, cid: Cid) -> Re<DTableBox> {
+        fn get_children_table(&self, cid: Cid,rid : Rcapa) -> Re<DTableBox> {
             let mut t = match self {
-                Tables::User(dv)    => { User::get_child_table_static( cid) }
-                Tables::City(dv)    => { City::get_child_table_static(cid) }
-                Tables::Order(dv)   => { Order::get_child_table_static(cid) }
-                Tables::Product(dv) => { Product::get_child_table_static(cid) }
+                Tables::User(dv)    => {
+                    let user = dv.get(rid)?;
+                    let child = User::get_child_table_static( cid)?;
+                    let r = match child {
+                        Tables::User(_)    => { Tables::User(DVec::none()) }
+                        Tables::City(_)    => { Tables::City(user.cities) }
+                        Tables::Order(_)   => { Tables::Order(user.orders) }
+                        Tables::Product(_) => { Tables::Product(DVec::none()) }
+                    };
+                    r
+                }
+                Tables::City(dv)    => {
+                    let city = dv.get(rid)?;
+                    let child = City::get_child_table_static( cid)?;
+                    let r = match child {
+                        Tables::User(_)    => { Tables::User(DVec::none()) }
+                        Tables::City(_)    => { Tables::City(DVec::none()) }
+                        Tables::Order(_)   => { Tables::Order(DVec::none()) }
+                        Tables::Product(_) => { Tables::Product(DVec::none()) }
+                    };
+                    r
+                }
+                Tables::Order(dv)   => {
+                    let order = dv.get(rid)?;
+                    let child = Order::get_child_table_static( cid)?;
+                    let r = match child {
+                        Tables::User(_)    => { Tables::User(DVec::none()) }
+                        Tables::City(_)    => { Tables::City(DVec::none()) }
+                        Tables::Order(_)   => { Tables::Order(DVec::none()) }
+                        Tables::Product(_) => { Tables::Product(order.products) }
+                    };
+                    r
+                }
+                Tables::Product(dv) => {
+                    let product = dv.get(rid)?;
+                    let child = Product::get_child_table_static( cid)?;
+                    let r = match child {
+                        Tables::User(_)    => { Tables::User(DVec::none()) }
+                        Tables::City(_)    => { Tables::City(DVec::none()) }
+                        Tables::Order(_)   => { Tables::Order(DVec::none()) }
+                        Tables::Product(_) => { Tables::Product(DVec::none()) }
+                    };
+                    r
+                }
             };
-            t
+            Ok(Box::new(t))
 
         }
         fn get_capa(&self) -> Rcapa{
