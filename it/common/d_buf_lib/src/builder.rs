@@ -1,5 +1,5 @@
 use crate::*;
-use crate::buffer::{Vsize,ROLLING_VERSION};
+use crate::buffer::{Vsize};
 use crate::serializer::{ DTableBox};
 use crate::table::Rcapa;
 
@@ -82,7 +82,8 @@ impl DBuftBuilderTOTO{
 }
 #[cfg(test)]
 mod tests {
-    use crate::serializer::{ DTableBox,};
+    use crate::buffer::RollingVersion;
+    use crate::serializer::{DTableBox,};
     use crate::serializer::{ DBuffTablesTrait};
     use crate::table::Tid;
     use super::*;
@@ -214,7 +215,7 @@ mod tests {
     #[test]
     fn test_build_users(){
         let users = build_users();
-        let mut builder = DBuftBuilderTOTO::new(0,ROLLING_VERSION,false,false,vec![],vec![],4);
+        let mut builder = DBuftBuilderTOTO::new(0,RollingVersion::VERSION,false,false,vec![],vec![],4);
         // Build table structure based on User type
         let ub : DTableBox = Box::new(Tables::User(users));
         builder.build_tables(&ub).unwrap();

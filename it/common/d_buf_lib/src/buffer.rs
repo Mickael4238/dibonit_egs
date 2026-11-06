@@ -5,9 +5,17 @@ pub type Bsize = usize;   // type of position in buffer, (must contain the maxim
 pub type Bpos = Bsize;
 pub type Rsize = usize;
 pub type Vsize = u8;            // type of rolling versions
-const ROLLING_VERSION_MASK: Vsize = 0x03;
-const ROLLING_VERSION_MAX: Vsize = 3;
-pub(crate) const ROLLING_VERSION: Vsize = 0;
+
+pub struct RollingVersion ;
+impl RollingVersion {
+    pub const MASK: Vsize = 0x03;
+    pub const MAX: Vsize = 3;
+    pub const VERSION: Vsize = 0;
+    pub fn from_u8(item: u8)->Vsize{
+        item & RollingVersion::MASK
+    }
+}
+
 
 pub struct DBufTOTO {
     pub d_buf_id: u16,
@@ -21,7 +29,7 @@ pub struct DBufTOTO {
 }
 impl DBufTOTO {
     pub fn new(structure :DTableBox,d_buf_id : u16,has_app_token : bool, has_user_token : bool, app_token : Vec<u8>, user_token : Vec<u8>, max_depth: u8 ) -> Re<Self> {
-        let mut builder = DBuftBuilderTOTO::new(d_buf_id,ROLLING_VERSION,has_app_token, has_user_token, app_token, user_token, max_depth);
+        let mut builder = DBuftBuilderTOTO::new(d_buf_id,RollingVersion::VERSION,has_app_token, has_user_token, app_token, user_token, max_depth);
         builder.build_tables(&structure).d_err_map(Fe::NewDBuf, 1)?;
         builder.build_rowvalues(structure).d_err_map(Fe::NewDBuf,2)?;
         builder.consume().d_err_map(Fe::NewDBuf,3)
