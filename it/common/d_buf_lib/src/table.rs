@@ -5,17 +5,17 @@ use crate::*;
 //     = 0xFFFE0001 + 0xA                        +
 //     = 0xFFFE000B (included in u32)
 pub type Rcapa = u16;           // row capacity (number of rows)
-pub type Rsize = u16;           // row size (bytes)
+pub type Rsize = u16;           // size of 1 row (bytes)
 
 pub type Tid = u16;              // type for table ids
 #[derive(Clone, Debug)]
 pub struct DBufTable {
-    pub table_id: Tid,
-    pub columns: Vec<DColumn>,
-    pub row_count:    Rcapa,
-    pub row_capacity: Rcapa,
-    pub row_size: u16,
-    pub has_index: bool,
+    pub table_id: Tid,          // id of the table
+    pub columns: Vec<DColumn>,  // all columns of the table
+    pub row_count:    Rcapa,    // number of 'active' rows in the table
+    pub row_capacity: Rcapa,    // number of allocated rows in the table
+    pub row_size: Rsize,        // size of 1 row (bytes)
+    pub has_index: bool,        // true if the table is indexed
 }
 
 impl DBufTable {

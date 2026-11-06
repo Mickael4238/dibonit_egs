@@ -765,7 +765,7 @@ pub enum Rc {
     DuplicateColumnId(Cid), ReservedColumnId, InvalidColumnType(u8), InvalidColumnSize, ColumnIdExceeded, InvalidDBufId, ColumnCountExceeded, RowSizeExceeded, MissingSizeForVariableType,
     CapacityExceeded, RowCapacityZero, DataSizeMismatch, IndexOutOfBounds, ColumnNotFound(u16), BufferTooSmall,
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
-    InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge,
+    InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge(u32),
     DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,
     MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa)
 }
@@ -796,7 +796,7 @@ impl fmt::Display for Rc {
             Rc::ColumnNotChild(id) => write!(f, "ColumnNotChild({})", id),
             Rc::MaxDepthExceeded => write!(f, "MaxDepthExceeded"),
             Rc::DBufNotFound(id) => write!(f, "DBufNotFound({})", id),
-            Rc::TokenTooLarge => write!(f, "TokenTooLarge"),
+            Rc::TokenTooLarge(esize) => write!(f, "TokenTooLarge({})", esize),
             Rc::DBufIdMismatch => write!(f, "DBufIdMismatch"),
             Rc::ColumnTypeMismatch => write!(f, "ColumnTypeMismatch"),
             Rc::ColumnSizeMismatch => write!(f, "ColumnSizeMismatch"),
@@ -814,7 +814,7 @@ pub enum Fe {
     NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
     GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
     CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable,OrderGetChildStructure,ProductGetChildStructure,CityGetChildStructure,BuildTable,
-    GetChildrenTable,
+    GetChildrenTable,CalculateTokenEsize
 }
 
 #[cfg(test)]

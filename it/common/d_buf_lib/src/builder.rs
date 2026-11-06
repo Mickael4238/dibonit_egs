@@ -1,25 +1,39 @@
+use std::cmp;
 use crate::*;
-use crate::buffer::{Vsize};
+use crate::buffer::{RollingVersion, Vsize};
+use crate::Rc::TokenTooLarge;
 use crate::serializer::{ DTableBox};
-use crate::table::Rcapa;
+use crate::table::{Rcapa, Tid};
 
 pub struct DBuftBuilderTOTO {
-    pub d_buf_id: u16,
-    pub rolling_version: u8,
-    pub has_app_token: bool,
-    pub has_user_token: bool,
-    pub app_token: Vec<u8>,
-    pub user_token: Vec<u8>,
-    pub tables: Vec<DBufTable>,
+    pub rolling_version: RollingVersion, // byte 1 / Bit: 1-2
+    pub has_app_token: bool,             // byte 1 / Bit: 3
+    pub has_user_token: bool,            // byte 1 / Bit: 4
+    pub token_esize: u8,                 // byte 1 / Bit: 5-8 2^(n) bytes (max 2^15)
+    pub d_buf_id: Tid,                   // byte 2-3
+    pub app_token: Vec<u8>,              // bytes 4-4+ 2^token_esize * has_app_token
+    pub user_token: Vec<u8>,             // bytes x-x+ 2^token_esize * has_app_token
+    pub tables: Vec<DBufTable>,          // bytes y-y + tables size
     pub raw_values: Vec<u8>,
     max_depth: u8,       // maximum depth of the recursion
     current_size: usize, // current size of the DBuf being built, at the end of the recursion, this will be the size of the DBuf being built
     current_depth: u8,   // current depth of the recursion, at the end of the recursion, this will be the depth of the DBuf being built
 }
 impl DBuftBuilderTOTO{
-    pub fn new(d_buf_id : u16, rolling_version : Vsize,has_app_token : bool, has_user_token : bool, app_token : Vec<u8>, user_token : Vec<u8>,max_depth: u8 ) -> Self {
-        Self {        d_buf_id,       rolling_version,        has_app_token,        has_user_token,        app_token,           user_token,          max_depth,tables: vec![], raw_values: vec![], current_size: 0, current_depth: 0 } // the children will never have tokens
+    pub fn new(d_buf_id : Tid, rolling_version : RollingVersion, app_token : Vec<u8>, user_token : Vec<u8>, max_depth: u8 ) -> Re<Self> {
+        let token_esize = Self::calculate_token_esize(&app_token, &user_token).d_err_map(Fe::NewDBuf,1)?;
+        let has_app_token = Self::calculate_has_app_token(&app_token);
+        let has_user_token = Self::calculate_has_user_token(&user_token);
+        Ok(Self {d_buf_id,rolling_version,has_app_token,has_user_token,token_esize,app_token,user_token,max_depth,tables: vec![], raw_values: vec![], current_size: 0, current_depth: 0 } )
     }
+    fn calculate_token_esize(app_token : &Vec<u8>, user_token : &Vec<u8>) -> Re<u8> {
+        let max = cmp::max(app_token.len() , user_token.len());
+        let esize = 0usize.leading_zeros() - max.leading_zeros() ;
+        if esize > 15 { Err(DErr::RootError(Fe::CalculateTokenEsize,1,Rc::TokenTooLarge(esize)))}
+        else{Ok(esize as u8)}
+    }
+    fn calculate_has_app_token(at : &Vec<u8>) -> bool {at.len() > 0}
+    fn calculate_has_user_token(ut : &Vec<u8>) -> bool {ut.len() > 0}
     pub fn build_tables(&mut self, table_in: &DTableBox) -> Re<()> {
         // Use instance method (delegates to static internally, no instance data used)
         let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
@@ -30,14 +44,11 @@ impl DBuftBuilderTOTO{
             .filter(|c| c.is_child())
             .map(|c| c.id())
             .collect();
-
         self.push_table(table).d_err_map(Fe::BuildTable,1)?;
-
         // Process children recursively
         for cid in child_column_ids {
             for rid in 0..capa {
                 let child_table = table_in.get_children_table(cid,rid).d_err_map(Fe::BuildHeaders,1)?;
-
                 self.build_tables(&child_table).d_err_map(Fe::BuildTable,1)?;
             }
         }
@@ -73,8 +84,16 @@ impl DBuftBuilderTOTO{
         self.current_depth += 1;
     }
     pub fn build_rowvalues(&self,structure : DTableBox ) -> Re<()> {
-        //todo
         Ok(())
+
+       /* self.tables
+        */
+    }
+    fn getTotalSize(&self) -> Bsize {
+        todo!()
+    }
+    fn getHeaderSize(&self) -> Bsize {
+        todo!()
     }
     pub fn consume(self) -> Re<DBufTOTO> {
         Ok(DBufTOTO{ d_buf_id: self.d_buf_id, rolling_version: self.rolling_version, has_app_token: self.has_app_token, has_user_token: self.has_user_token, app_token:self.app_token, user_token: self.user_token, tables : self.tables,raw_values : self.raw_values})
@@ -215,7 +234,7 @@ mod tests {
     #[test]
     fn test_build_users(){
         let users = build_users();
-        let mut builder = DBuftBuilderTOTO::new(0,RollingVersion::VERSION,false,false,vec![],vec![],4);
+        let mut builder = DBuftBuilderTOTO::new(0,RollingVersion::Current,vec![],vec![],4).unwrap();
         // Build table structure based on User type
         let ub : DTableBox = Box::new(Tables::User(users));
         builder.build_tables(&ub).unwrap();
