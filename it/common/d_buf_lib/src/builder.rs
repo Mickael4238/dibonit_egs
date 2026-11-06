@@ -83,7 +83,7 @@ impl DBuftBuilderTOTO{
 #[cfg(test)]
 mod tests {
     use crate::serializer::{ DTableBox,};
-    use crate::serializer::{ToDBufStruct, DBuffTablesTrait, DVec};
+    use crate::serializer::{ DBuffTablesTrait, DVec};
     use crate::table::Tid;
     use super::*;
 
@@ -99,17 +99,32 @@ mod tests {
                 Tables::Product(_)   => {4}
             }
         }
-
     }
-
     impl DBuffTablesTrait for Tables {
         fn get_table_info  (&self)-> Re<(Tid,Vec<DColumn>)>{
-            match self {
-                Tables::User(_)    => { User::get_dbuff_info_static() }
-                Tables::City(_)    => { City::get_dbuff_info_static() }
-                Tables::Order(_)   => { Order::get_dbuff_info_static() }
-                Tables::Product(_) => { Product::get_dbuff_info_static() }
-            }
+            Ok((self.id(),
+                match self {
+                    Tables::User(_)    => {vec![
+                        DColumn::U32(1),
+                        DColumn::UtcTime(2),
+                        DColumn::Child(3,0),
+                        DColumn::Child(4,0),
+                    ]}
+                    Tables::City(_)    => {vec![
+                        DColumn::U32(1),
+                        DColumn::String(2, 50),
+                    ]}
+                    Tables::Order(_)   => {vec![
+                        DColumn::U32(1),
+                        DColumn::UtcTime(2),
+                        DColumn::Child(3,0),
+                    ]}
+                    Tables::Product(_) => {vec![
+                        DColumn::U32(1),
+                        DColumn::String(2, 50),
+                        DColumn::F32(3),
+                    ]}
+            }))
         }
         fn get_children_table(&self, cid: Cid,rid : Rcapa) -> Re<DTableBox> {
             Ok(Box::new(match self {
@@ -151,56 +166,13 @@ mod tests {
         name: String,
         price: f32
     }
-    impl ToDBufStruct for Product {
-        fn get_dbuff_info_static() -> Re<(Tid, Vec<DColumn>)> {
-            Ok((Tables::Product(DVec::none()).id(), vec![
-                DColumn::U32(1),
-                DColumn::String(2, 50),
-                DColumn::F32(3),
-            ]))
-        }
 
-        impl_dbuf_struct_instance_methods!();
-    }
     #[derive(Clone)]
     struct Order { id: u32, date: u64, products: DVec<Product> }
-    impl ToDBufStruct for  Order {
-        fn get_dbuff_info_static() -> Re<(Tid,Vec<DColumn>)>{
-            Ok((Tables::Order(DVec::none()).id(),vec![
-                DColumn::U32(1),
-                DColumn::UtcTime(2),
-                DColumn::Child(3,0),
-            ]))
-        }
-        impl_dbuf_struct_instance_methods!();
-    }
     #[derive(Clone)]
     struct City { id: u32, name: String }
-    impl ToDBufStruct for City {
-        fn get_dbuff_info_static() -> Re<(Tid,Vec<DColumn>)>{
-            Ok((Tables::City(DVec::none()).id(),vec![
-                DColumn::U32(1),
-                DColumn::String(2, 50),
-            ]))
-        }
-
-        impl_dbuf_struct_instance_methods!();
-    }
     #[derive(Clone)]
     struct User { id: u32, name: String, orders: DVec<Order> ,cities: DVec<City>}
-    impl ToDBufStruct for User {
-        fn get_dbuff_info_static() -> Re<(Tid,Vec<DColumn>)>{
-            Ok((Tables::User(DVec::none()).id(),vec![
-                DColumn::U32(1),
-                DColumn::UtcTime(2),
-                DColumn::Child(3,0),
-                DColumn::Child(4,0),
-            ]))
-        }
-
-        impl_dbuf_struct_instance_methods!();
-    }
-
     fn build_users()-> DVec<User> {
         let mut alex_order1_products = DVec::new(2);
         alex_order1_products.push(Product{id: 0,name: "shoes".to_string(), price: 100.0,});

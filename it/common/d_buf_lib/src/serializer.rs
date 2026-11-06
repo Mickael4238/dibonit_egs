@@ -4,7 +4,7 @@ use crate::column::Cid;
 use crate::table::{Rcapa, Tid};
 pub type DStructBox<T> = Box<T>;
 #[derive(Clone)]
-pub struct DVec<T: ToDBufStruct> {
+pub struct DVec<T> {
     dv: Option<Vec<DStructBox<T>>>
 }
 
@@ -15,28 +15,8 @@ pub trait DBuffTablesTrait{
     fn get_table_info(&self) -> Re<(Tid, Vec<DColumn>)>;
     fn get_capa(&self) -> Rcapa;
 
-    // fn get_dvec<T: ToDBufStruct>(&self) -> &DVec<T>;
 }
-pub trait ToDBufStruct { // DTableBox
-    // Static methods for structure definition (type-level)
-    fn get_dbuff_info_static() -> Re<(Tid, Vec<DColumn>)> where Self: Sized;
-    // Instance methods for trait objects
-    fn get_dbuff_info(&self) -> Re<(Tid, Vec<DColumn>)>;
-}
-
-// Macro to auto-generate the instance method implementations
-#[macro_export]
-macro_rules! impl_dbuf_struct_instance_methods {
-    () => {
-        fn get_dbuff_info(&self) -> Re<(Tid, Vec<DColumn>)> {
-            Self::get_dbuff_info_static()
-        }
-    };
-}
-
-
-
-impl<T: ToDBufStruct> DVec<T> {
+impl<T> DVec<T> {
     pub fn new(capa : Rcapa) -> Self {
         Self {dv: Some(Vec::with_capacity(capa as usize))}
     }

@@ -8,7 +8,6 @@ use buffer::{DBufTOTO,Bsize,Rsize};
 use builder::DBuftBuilderTOTO;
 use table::DBufTable;
 use column::{DColumn,Cid};
-use serializer::ToDBufStruct;
 use d_err_lib::*;
 
 
