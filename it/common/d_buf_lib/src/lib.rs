@@ -817,7 +817,8 @@ impl fmt::Display for Rc {
 pub enum Fe {
     NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
     GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
-    CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable,OrderGetChildStructure,ProductGetChildStructure,CityGetChildStructure,BuildTable
+    CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable,OrderGetChildStructure,ProductGetChildStructure,CityGetChildStructure,BuildTable,
+    GetChildrenTable,
 }
 
 #[cfg(test)]

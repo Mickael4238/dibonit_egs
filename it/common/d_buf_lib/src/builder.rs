@@ -83,12 +83,12 @@ impl DBuftBuilderTOTO{
 #[cfg(test)]
 mod tests {
     use crate::serializer::{ DTableBox,};
-    use crate::serializer::{ DBuffTablesTrait, DVec};
+    use crate::serializer::{ DBuffTablesTrait};
     use crate::table::Tid;
     use super::*;
 
     enum Tables {
-        User(DVec<User>),City(DVec<City>),Order(DVec<Order>),Product(DVec<Product>),
+        User(Vec<User>),City(Vec<City>),Order(Vec<Order>),Product(Vec<Product>),
     }
     impl Tables {
         fn id(&self) ->Tid{
@@ -129,25 +129,25 @@ mod tests {
         fn get_children_table(&self, cid: Cid,rid : Rcapa) -> Re<DTableBox> {
             Ok(Box::new(match self {
                 Tables::User(dv)    => {
-                    let user = dv.get(rid)?;
+                    let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(cid)))?;
                     match cid {
                         3 => Tables::Order(user.orders.clone()),
                         4 => Tables::City(user.cities.clone()),
-                        _ => return Err(DErr::RootError(Fe::BuildTable, 1, Rc::ColumnNotFound(cid)))
+                        _ => return Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotFound(cid)))
                     }
                 }
                 Tables::City(dv)    => {
-                    return Err(DErr::RootError(Fe::CityGetChildStructure, 1, Rc::ColumnNotFound(cid)))
+                    return Err(DErr::RootError(Fe::GetChildrenTable,2, Rc::ColumnNotFound(cid)))
                 }
                 Tables::Order(dv)   => {
-                    let order = dv.get(rid)?;
+                    let order = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(cid)))?;
                     match cid {
                         3 => Tables::Product(order.products.clone()),
-                        _ => return Err(DErr::RootError(Fe::OrderGetChildStructure, 1, Rc::ColumnNotFound(cid)))
+                        _ => return Err(DErr::RootError(Fe::GetChildrenTable, 3, Rc::ColumnNotFound(cid)))
                     }
                 }
                 Tables::Product(dv) => {
-                    return Err(DErr::RootError(Fe::BuildTable, 1, Rc::ColumnNotFound(cid)))
+                    return Err(DErr::RootError(Fe::GetChildrenTable, 4, Rc::ColumnNotFound(cid)))
                 }
             }) as DTableBox)
         }
@@ -168,44 +168,44 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct Order { id: u32, date: u64, products: DVec<Product> }
+    struct Order { id: u32, date: u64, products: Vec<Product> }
     #[derive(Clone)]
     struct City { id: u32, name: String }
     #[derive(Clone)]
-    struct User { id: u32, name: String, orders: DVec<Order> ,cities: DVec<City>}
-    fn build_users()-> DVec<User> {
-        let mut alex_order1_products = DVec::new(2);
+    struct User { id: u32, name: String, orders: Vec<Order> ,cities: Vec<City>}
+    fn build_users()-> Vec<User> {
+        let mut alex_order1_products = Vec::with_capacity(2);
         alex_order1_products.push(Product{id: 0,name: "shoes".to_string(), price: 100.0,});
         alex_order1_products.push(Product{id: 1,name: "laptop".to_string(),price: 999.0,});
         alex_order1_products.push(Product{id: 2,name: "toto".to_string(),price: 999.0,});
 
-        let mut alex_order2_products= DVec::new(2);
+        let mut alex_order2_products= Vec::with_capacity(2);
         alex_order2_products.push(Product{id: 0,name: "shoes".to_string(), price: 100.0,});
         alex_order2_products.push(Product{id: 2,name: "bike".to_string(),price: 1230.0,});
 
-        let mut alex_orders= DVec::new(2);
+        let mut alex_orders= Vec::with_capacity(2);
         alex_orders.push(Order{id: 1,date: 2022,products:alex_order1_products,});
         alex_orders.push(Order{id: 2,date: 2023,products:alex_order2_products,});
 
-        let mut alex_city = DVec::new(1);
+        let mut alex_city = Vec::with_capacity(1);
         alex_city.push(City{id: 1,name : "Grenoble".to_string()});
 
-        let mut fany_order1_products = DVec::new(2);
+        let mut fany_order1_products = Vec::with_capacity(2);
         fany_order1_products.push(Product{id: 3,name: "harness".to_string(), price: 53.0,});
         fany_order1_products.push(Product{id: 4,name: "rope".to_string(),price: 125.0,});
 
-        let mut fany_order2_products = DVec::new(2);
+        let mut fany_order2_products = Vec::with_capacity(2);
         fany_order2_products.push(Product{id: 5,name: "carabiner".to_string(), price: 15.0,});
         fany_order2_products.push(Product{id: 1,name: "laptop".to_string(),price: 999.0,});
 
-        let mut fany_orders = DVec::new(2);
+        let mut fany_orders = Vec::with_capacity(2);
         fany_orders.push(Order{id: 1,date: 2021,products:fany_order1_products,});
         fany_orders.push(Order{id: 1,date: 2024,products:fany_order2_products,});
 
-        let mut fany_city = DVec::new(1);
+        let mut fany_city = Vec::with_capacity(1);
         fany_city.push(City{id: 1,name : "Praha".to_string()});
 
-        let mut ret = DVec::new(2);
+        let mut ret = Vec::with_capacity(2);
         ret.push(User{ id: 0,name: "alex".to_string(),orders: alex_orders,cities: alex_city,});
         ret.push(User{ id: 0,name: "fany".to_string(),orders: fany_orders,cities: fany_city,});
 
