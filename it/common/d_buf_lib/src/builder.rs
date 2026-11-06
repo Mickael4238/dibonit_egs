@@ -1,5 +1,5 @@
 use crate::*;
-use crate::buffer::Vsize;
+use crate::buffer::{Vsize,ROLLING_VERSION};
 use crate::serializer::{ DTableBox};
 use crate::table::Rcapa;
 
@@ -136,7 +136,7 @@ mod tests {
                         _ => return Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotFound(cid)))
                     }
                 }
-                Tables::City(dv)    => {
+                Tables::City(_)    => {
                     return Err(DErr::RootError(Fe::GetChildrenTable,2, Rc::ColumnNotFound(cid)))
                 }
                 Tables::Order(dv)   => {
@@ -146,7 +146,7 @@ mod tests {
                         _ => return Err(DErr::RootError(Fe::GetChildrenTable, 3, Rc::ColumnNotFound(cid)))
                     }
                 }
-                Tables::Product(dv) => {
+                Tables::Product(_) => {
                     return Err(DErr::RootError(Fe::GetChildrenTable, 4, Rc::ColumnNotFound(cid)))
                 }
             }) as DTableBox)

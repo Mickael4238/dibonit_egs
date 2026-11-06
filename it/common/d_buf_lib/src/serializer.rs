@@ -1,8 +1,6 @@
-use d_err_lib::DErr;
-use crate::{DColumn, Fe, Rc, Re};
+use crate::{DColumn, Re};
 use crate::column::Cid;
 use crate::table::{Rcapa, Tid};
-pub type DStructBox<T> = Box<T>;
 pub type DTableBox = Box<dyn DBuffTablesTrait>;
 
 pub trait DBuffTablesTrait{

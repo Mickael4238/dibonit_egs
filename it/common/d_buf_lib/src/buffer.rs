@@ -5,7 +5,10 @@ pub type Bsize = usize;   // type of position in buffer, (must contain the maxim
 pub type Bpos = Bsize;
 pub type Rsize = usize;
 pub type Vsize = u8;            // type of rolling versions
-const ROLLING_VERSION: Vsize = 0;
+const ROLLING_VERSION_MASK: Vsize = 0x03;
+const ROLLING_VERSION_MAX: Vsize = 3;
+pub(crate) const ROLLING_VERSION: Vsize = 0;
+
 pub struct DBufTOTO {
     pub d_buf_id: u16,
     pub rolling_version: u8,

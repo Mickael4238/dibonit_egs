@@ -9,18 +9,14 @@ use builder::DBuftBuilderTOTO;
 use table::DBufTable;
 use column::{DColumn,Cid};
 use d_err_lib::*;
-
-
 use std::fmt;
-use std::any::Any;
 use std::collections::HashMap;
 use crate::table::Rcapa;
 
-const ROLLING_VERSION: u8 = 0;
-const MAX_ROLLING_VERSION: u8 = 3;
+
 const MAX_COLUMN_NUM: Cnum = 2047;
 const MAX_RECURSION_DEPTH: u8 = 16;
-const ROLLING_VERSION_MASK: u8 = 0x03;
+
 const COL_COUNT_HIGH_MASK: u8 = 0x1C;
 const COL_COUNT_HIGH_SHIFT: u8 = 2;
 const COL_ID_HIGH_MASK: u8 = 0xE0;
