@@ -2,22 +2,14 @@ use d_err_lib::DErr;
 use crate::{DColumn, Fe, Rc, Re};
 use crate::column::Cid;
 use crate::table::{Rcapa, Tid};
-pub type DStructBox<T: ToDBufStruct> = Box<T>;
+pub type DStructBox<T> = Box<T>;
 #[derive(Clone)]
 pub struct DVec<T: ToDBufStruct> {
     dv: Option<Vec<DStructBox<T>>>
 }
-pub type DTableBoxType <T: ToDBufStruct>= Box<T>;
+
 pub type DTableBox = Box<dyn DBuffTablesTrait>;
 
-pub trait DBuffTablesTraitType{
-    fn get_children_table<T: ToDBufStruct>(&self, cid: Cid) -> Re<DTableBoxType<T>>;
-    fn get_table_info(&self) -> Re<(Tid, Vec<DColumn>)>;
-    fn get_capa(&self) -> Rcapa;
-    fn get<T: ToDBufStruct>(&self) -> DTableBoxType<T>;
-
-   // fn get_dvec<T: ToDBufStruct>(&self) -> &DVec<T>;
-}
 pub trait DBuffTablesTrait{
     fn get_children_table(&self, cid: Cid, rid :Rcapa) -> Re<DTableBox>;
     fn get_table_info(&self) -> Re<(Tid, Vec<DColumn>)>;
@@ -25,16 +17,11 @@ pub trait DBuffTablesTrait{
 
     // fn get_dvec<T: ToDBufStruct>(&self) -> &DVec<T>;
 }
-
-
 pub trait ToDBufStruct { // DTableBox
     // Static methods for structure definition (type-level)
     fn get_dbuff_info_static() -> Re<(Tid, Vec<DColumn>)> where Self: Sized;
-    fn get_child_table_static(cid: Cid) -> Re<DTableBox> where Self: Sized;
     // Instance methods for trait objects
     fn get_dbuff_info(&self) -> Re<(Tid, Vec<DColumn>)>;
-
-    fn get_child_table(&self, cid: Cid) -> Re<DTableBox>;
 }
 
 // Macro to auto-generate the instance method implementations
@@ -43,9 +30,6 @@ macro_rules! impl_dbuf_struct_instance_methods {
     () => {
         fn get_dbuff_info(&self) -> Re<(Tid, Vec<DColumn>)> {
             Self::get_dbuff_info_static()
-        }
-        fn get_child_table(&self, cid: Cid) -> Re<DTableBox> {
-            Self::get_child_table_static(cid, /* dv */)
         }
     };
 }

@@ -1,6 +1,6 @@
 use crate::*;
 use crate::buffer::Vsize;
-use crate::serializer::{ DTableBox, ToDBufStruct};
+use crate::serializer::{ DTableBox};
 use crate::table::Rcapa;
 
 pub struct DBuftBuilderTOTO {
@@ -83,9 +83,6 @@ impl DBuftBuilderTOTO{
 #[cfg(test)]
 mod tests {
     use crate::serializer::{ DTableBox,};
-
-use crate::serializer::DStructBox;
-use crate::buffer::Bpos;
     use crate::serializer::{ToDBufStruct, DBuffTablesTrait, DVec};
     use crate::table::Tid;
     use super::*;
@@ -125,7 +122,6 @@ use crate::buffer::Bpos;
                     }
                 }
                 Tables::City(dv)    => {
-                    let city = dv.get(rid)?;
                     return Err(DErr::RootError(Fe::CityGetChildStructure, 1, Rc::ColumnNotFound(cid)))
                 }
                 Tables::Order(dv)   => {
@@ -136,7 +132,6 @@ use crate::buffer::Bpos;
                     }
                 }
                 Tables::Product(dv) => {
-                    let product = dv.get(rid)?;
                     return Err(DErr::RootError(Fe::BuildTable, 1, Rc::ColumnNotFound(cid)))
                 }
             }) as DTableBox)
@@ -165,9 +160,6 @@ use crate::buffer::Bpos;
             ]))
         }
 
-        fn get_child_table_static(cid: Cid) -> Re<DTableBox> where Self: Sized{
-            todo!("no child table for Product")
-        }
         impl_dbuf_struct_instance_methods!();
     }
     #[derive(Clone)]
@@ -179,12 +171,6 @@ use crate::buffer::Bpos;
                 DColumn::UtcTime(2),
                 DColumn::Child(3,0),
             ]))
-        }
-        fn get_child_table_static(cid: Cid) -> Re<DTableBox> where Self: Sized{
-            match cid{
-                3 => {Ok(Box::new(Tables::Product(DVec::none())))}
-                _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
-            }
         }
         impl_dbuf_struct_instance_methods!();
     }
@@ -198,11 +184,6 @@ use crate::buffer::Bpos;
             ]))
         }
 
-        fn get_child_table_static(cid: Cid) -> Re<DTableBox> where Self: Sized{
-            match cid {
-                _ => { Err(DErr::RootError(Fe::CityGetChildStructure, 1, Rc::ColumnNotFound(cid))) }
-            }
-        }
         impl_dbuf_struct_instance_methods!();
     }
     #[derive(Clone)]
@@ -217,13 +198,6 @@ use crate::buffer::Bpos;
             ]))
         }
 
-        fn get_child_table_static(cid: Cid) -> Re<DTableBox> where Self: Sized{
-            match cid{
-                3 => {Ok(Box::new(Tables::Order(DVec::none())))}
-                4 => {Ok(Box::new(Tables::City(DVec::none())))}
-                _ => {Err(DErr::RootError(Fe::OrderGetChildStructure,1,Rc::ColumnNotFound(cid)))}
-            }
-        }
         impl_dbuf_struct_instance_methods!();
     }
 
