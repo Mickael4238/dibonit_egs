@@ -88,11 +88,16 @@ impl DBuftBuilderTOTO{
        /* self.tables
         */
     }
-    fn getTotalSize(&self) -> Bsize {
-        todo!()
+    fn calculate_total_size(&self) -> Bsize {
+       self.tables.iter().map(|v| v.calculate_size()).sum::<Bsize>()
+           + self.calculate_header_size()
     }
-    fn getHeaderSize(&self) -> Bsize {
-        todo!()
+    fn calculate_header_size(&self) -> Bsize {
+        let rol_vers_tocken_info_size: Bsize = 1 ;
+        let d_buf_id_size: Bsize = 2;
+        let tokens_size =( self.app_token.size_of()  +  self.user_token.size_of() )as Bsize;
+        let nb_table_size: Bsize = size_of::<Tcapa>();
+        rol_vers_tocken_info_size + d_buf_id_size + tokens_size + nb_table_size
     }
     pub fn consume(self) -> Re<DBufTOTO> {
         Ok(DBufTOTO{ d_buf_id: self.d_buf_id, rolling_version: self.rolling_version, app_token:self.app_token, user_token: self.user_token, tables : self.tables,raw_values : self.raw_values})

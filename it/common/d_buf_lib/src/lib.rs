@@ -26,7 +26,7 @@ const HAS_INDEX_MASK: u8 = 0x80;
 
 type Cnum = u16; //type for column numbers, note that Cnum is not as big as u16, so we need to declare a MAX_COLUMN_NUM as it differs from Cnum::Max
 
-
+type Tcapa = u16; //type for table capacity in buffer,
 type Re<T> = Result<T, DErr<Fe, Rc>>;
 /*
 #[derive(Debug, Clone, PartialEq)]

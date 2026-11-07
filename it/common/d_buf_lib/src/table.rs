@@ -35,6 +35,7 @@ impl DBufTable {
 
         Ok(Self { table_id, columns, row_count: 0, row_capacity, row_size, has_index })
     }
+    pub fn calculate_size(&self)->Bsize {0}
     pub(crate) fn from_bytes(p0: &Vec<u8>) -> Re<Self>  {
         todo!()
     }
