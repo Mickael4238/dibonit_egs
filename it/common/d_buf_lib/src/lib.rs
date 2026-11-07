@@ -22,8 +22,6 @@ const COL_COUNT_HIGH_SHIFT: u8 = 2;
 const COL_ID_HIGH_MASK: u8 = 0xE0;
 const COL_ID_HIGH_SHIFT: u8 = 5;
 const COL_TYPE_MASK: u8 = 0x1F;
-const HAS_APP_TOKEN_MASK: u8 = 0x20;
-const HAS_USER_TOKEN_MASK: u8 = 0x40;
 const HAS_INDEX_MASK: u8 = 0x80;
 
 type Cnum = u16; //type for column numbers, note that Cnum is not as big as u16, so we need to declare a MAX_COLUMN_NUM as it differs from Cnum::Max

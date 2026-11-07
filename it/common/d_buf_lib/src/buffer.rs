@@ -25,36 +25,85 @@ impl RollingVersion {
         }
     }
 }
+pub enum Token {
+    Some(Vec<u8>),
+    None,
+}
+impl Token {
+    pub const APP_MASK:u8=4;  // 3rd bit
+    pub const USER_MASK:u8=8; // 4th bit
+    pub fn from_bytes(exist : bool,index:  &mut Bpos  , rowdata : &Vec<u8> )->Self {
+        if exist {
+            // note: if we want not to copy from the row, we could use a reference to the rowdata
+            let esize = rowdata[*index];
+            let size = 2^esize as Bpos;
+            let mut v = rowdata[*index..size].to_vec();
+            *index += 1 + size;
+            Token::Some(v)
+        }
+        else{Token::None}
+    }
+    pub fn from_vec(v: Option<Vec<u8>>)->Self {
+        match v{
+            Some(v)=>Token::Some(v),
+            None=>Token::None,
+        }
+    }
+    pub fn has_app_token(b : u8)->bool{ b & Token::APP_MASK == Token::APP_MASK}
+    pub fn has_user_token(b : u8)->bool{ b & Token::USER_MASK == Token::USER_MASK}
+    pub fn get(&self)->Option<&Vec<u8>>{
+        match &self{
+            &Token::Some(v)=>Some(v),
+            &Token::None=>None,
+        }
+    }
+    /// return the x as 2^x size of the token, 0 if None,
+    /// a 255-byte token returns 8
+    pub fn esize_of(&self)->(u8){
+        match &self{
+            &Token::Some(v)=>{
+                 (0usize.leading_zeros() - v.len().leading_zeros() )as u8
+            },
+            &Token::None=>{0u8}
+        }
+    }
+    pub fn size_of(&self)->(u8){
+        match &self{
+            &Token::Some(v)=>{
+                2^self.esize_of()
+            },
+            &Token::None=>{0u8}
+        }
+    }
+}
 
 
 pub struct DBufTOTO {
     pub rolling_version: RollingVersion,
     pub d_buf_id: u16,
-    pub has_app_token: bool,
-    pub has_user_token: bool,
-    pub app_token: Vec<u8>,
-    pub user_token: Vec<u8>,
+    pub app_token: Token,
+    pub user_token: Token,
     pub tables: Vec<DBufTable>,
     pub raw_values: Vec<u8>,
 }
 impl DBufTOTO {
-    pub fn new(structure :DTableBox,d_buf_id : u16, app_token : Vec<u8>, user_token : Vec<u8>, max_depth: u8 ) -> Re<Self> {
+    pub fn new(structure :DTableBox,d_buf_id : u16, app_token : Option<Vec<u8>>, user_token :Option<Vec<u8>>, max_depth: u8 ) -> Re<Self> {
         let mut builder = DBuftBuilderTOTO::new(d_buf_id,RollingVersion::Current, app_token, user_token, max_depth).d_err_map(Fe::NewDBuf, 1)?;
         builder.build_tables(&structure).d_err_map(Fe::NewDBuf, 1)?;
         builder.build_rowvalues(structure).d_err_map(Fe::NewDBuf,2)?;
         builder.consume().d_err_map(Fe::NewDBuf,3)
     }
     pub fn new_basic(structure : DTableBox,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure, 1, vec![], vec![], max_depth).d_err_map(Fe::NewDBuf,1)
+        DBufTOTO::new(structure, 1, None, None, max_depth).d_err_map(Fe::NewDBuf,1)
     }
-    pub fn new_tokens(structure : DTableBox,app_token : Vec<u8>, user_token : Vec<u8>,max_depth : u8) -> Re<Self> {
+    pub fn new_tokens(structure : DTableBox,app_token : Option<Vec<u8>>, user_token :Option<Vec<u8>>,max_depth : u8) -> Re<Self> {
         DBufTOTO::new(structure,1, app_token, user_token, max_depth).d_err_map(Fe::NewDBuf,1)
     }
-    pub fn new_user_tokens(structure : DTableBox, user_token : Vec<u8>,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure,1,vec![], user_token, max_depth).d_err_map(Fe::NewDBuf,1)
+    pub fn new_user_tokens(structure : DTableBox, user_token : Option<Vec<u8>>,max_depth : u8) -> Re<Self> {
+        DBufTOTO::new(structure,1,None, user_token, max_depth).d_err_map(Fe::NewDBuf,1)
     }
-    pub fn new_app_tokens(structure : DTableBox,app_token : Vec<u8>,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure,1, app_token, vec![], max_depth).d_err_map(Fe::NewDBuf,1)
+    pub fn new_app_tokens(structure : DTableBox,app_token : Option<Vec<u8>>,max_depth : u8) -> Re<Self> {
+        DBufTOTO::new(structure,1, app_token, None, max_depth).d_err_map(Fe::NewDBuf,1)
     }
     pub fn from_bytes(bytes: Vec<u8>) -> Re<DBufTOTO> {
         //todo read th child  headers, create a specific function in the builder? in the table?
@@ -65,6 +114,6 @@ impl DBufTOTO {
         let actual_data_size = bytes.len() - table_size;
         if actual_data_size < expected_data_size { return Err(DErr::RootError(Fe::FromBytesDBuf, 2, Rc::BufferTooSmall)); }
         let  rolling_version = RollingVersion::Current; //todo!()
-        Ok(DBufTOTO { d_buf_id: 0, rolling_version , has_app_token: false, has_user_token: false, app_token: vec![], user_token: vec![], tables,  raw_values: bytes })
+        Ok(DBufTOTO { d_buf_id: 0, rolling_version ,app_token:Token::None, user_token: Token::None, tables,  raw_values: bytes })
     }
 }
