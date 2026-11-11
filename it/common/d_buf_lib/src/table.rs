@@ -30,18 +30,37 @@ impl DBufTable {
         //let row_size = columns.iter().map(|c| c.size_of()).sum();
         let row_size :Rsize = columns.iter().try_fold(0 as Rsize, |acc, c| {
             acc.checked_add(c.size_of())
-                .ok_or("Columns size overflowed u8 limit")
+                .ok_or("Columns size overflowed Rsize limit")
         }).map_err(|_| DErr::RootError(Fe::NewDBufHeader,4,Rc::RowSizeExceeded))?;
-
         Ok(Self { table_id, columns, row_count: 0, row_capacity, row_size, has_index })
     }
-    pub fn calculate_size(&self)->Bsize {0}
+    pub fn calculate_size(&self)->Bsize {
+        self.calculate_header_size()
+            + self.row_capacity as Bsize * self.row_size  as Bsize
+    }
+    pub(crate) fn calculate_header_size(&self) ->Bsize{
+        size_of::<Tid>() + size_of::<Rcapa>() + size_of::<u8>()
+            + self.columns.len() as Bsize * DColumn::HEADER_SIZE as Bsize
+    }
+    pub fn push_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
+        self.push_header_rowvalues( rv);
+        self.calculate_column_links();
+        self.push_data_rowvalues(rv);
+        Ok(())
+    }
+    pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
+        todo!()
+    }
+    pub fn calculate_column_links(&self) -> Re<()>{
+        todo!()
+    }
+    pub fn push_data_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
+        todo!()
+    }
     pub(crate) fn from_bytes(p0: &Vec<u8>) -> Re<Self>  {
         todo!()
     }
-    pub(crate) fn header_size(&self) -> usize {
-        todo!()
-    }
+
     /*
     pub fn header_size(&self) -> usize {
         let mut size = 10;

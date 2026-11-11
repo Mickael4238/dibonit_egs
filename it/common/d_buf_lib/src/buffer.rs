@@ -5,6 +5,7 @@ pub type Bsize = usize;   // type of position in buffer, (must contain the maxim
 pub type Bpos = Bsize;
 pub type Rsize = usize;
 pub type Vsize = u8;            // type of rolling versions
+#[derive(Clone,Copy)]
 pub enum RollingVersion {    // when receive :
     PreviousDeprecated = 3,  //  -> Raise an Error, the other app is too old, but we manage the case and send buffers with the PreviousDeprecated buffer version
     PreviousToDeploy   = 0,  //  -> Raise a warning, our app is newly deployed (but not the other), we manage the case and send PreviousToDeploy buffer version
@@ -26,34 +27,42 @@ impl RollingVersion {
     }
 }
 pub enum Token {
-    Some(Vec<u8>),
+    App(Vec<u8>),
+    User(Vec<u8>),
     None,
 }
 impl Token {
     pub const APP_MASK:u8=4;  // 3rd bit
     pub const USER_MASK:u8=8; // 4th bit
-    pub fn from_bytes(exist : bool,index:  &mut Bpos  , rowdata : &Vec<u8> )->Self {
-        if exist {
+    pub fn from_bytes(b : u8,index:  &mut Bpos  , rowdata : &Vec<u8> )->Self {
+        if Token::has_app_token(b) | Token::has_user_token(b) {
             // note: if we want not to copy from the row, we could use a reference to the rowdata
             let esize = rowdata[*index];
             let size = 2^esize as Bpos;
             let mut v = rowdata[*index..size].to_vec();
             *index += 1 + size;
-            Token::Some(v)
+            if Token::has_app_token(b) {
+                Token::App(v)
+            }else{
+                Token::User(v)
+            }
         }
         else{Token::None}
     }
-    pub fn from_vec(v: Option<Vec<u8>>)->Self {
-        match v{
-            Some(v)=>Token::Some(v),
-            None=>Token::None,
-        }
-    }
     pub fn has_app_token(b : u8)->bool{ b & Token::APP_MASK == Token::APP_MASK}
     pub fn has_user_token(b : u8)->bool{ b & Token::USER_MASK == Token::USER_MASK}
+    pub fn has_token_as_row(&self)->u8{
+        match self{
+            &Token::App(_)=>Token::APP_MASK,
+            &Token::User(_)=>Token::USER_MASK,
+            &Token::None=>0,
+        }
+    }
+
     pub fn get(&self)->Option<&Vec<u8>>{
         match &self{
-            &Token::Some(v)=>Some(v),
+            &Token::App(v)=>Some(v),
+            &Token::User(v)=>Some(v),
             &Token::None=>None,
         }
     }
@@ -61,20 +70,19 @@ impl Token {
     /// a 255-byte token returns 8
     pub fn esize_of(&self)->(u8){
         match &self{
-            &Token::Some(v)=>{
-                 (0usize.leading_zeros() - v.len().leading_zeros() )as u8
-            },
+            &Token::App(v)=>Token::esize_of_vec(v),
+            &Token::User(v)=>Token::esize_of_vec(v),
             &Token::None=>{0u8}
         }
     }
     pub fn size_of(&self)->(u8){
         match &self{
-            &Token::Some(v)=>{
-                2^self.esize_of()
-            },
+            &Token::App(v)=>2^Token::esize_of_vec(v),
+            &Token::User(v)=>2^Token::esize_of_vec(v),
             &Token::None=>{0u8}
         }
     }
+    fn esize_of_vec(v: &Vec<u8>)->(u8){(0usize.leading_zeros() - v.len().leading_zeros() )as u8}
 }
 
 
@@ -108,7 +116,7 @@ impl DBufTOTO {
     pub fn from_bytes(bytes: Vec<u8>) -> Re<DBufTOTO> {
         //todo read th child  headers, create a specific function in the builder? in the table?
         let tables = vec![DBufTable::from_bytes(&bytes)?,];
-        let table_size = tables[0].header_size();
+        let table_size = tables[0].calculate_header_size();
         if bytes.len() < table_size { return Err(DErr::RootError(Fe::FromBytesDBuf, 1, Rc::BufferTooSmall)); }
         let expected_data_size = tables[0].row_count as usize * tables[0].row_size as usize;
         let actual_data_size = bytes.len() - table_size;

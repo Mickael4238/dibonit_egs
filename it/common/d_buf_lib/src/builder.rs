@@ -18,21 +18,16 @@ pub struct DBuftBuilderTOTO {
 }
 impl DBuftBuilderTOTO{
     pub fn new(d_buf_id : Tid, rolling_version : RollingVersion, app_token_v : Option<Vec<u8>>, user_token_v : Option<Vec<u8>>, max_depth: u8 ) -> Re<Self> {
-        /*let token_esize = Self::calculate_token_esize(&app_token, &user_token).d_err_map(Fe::NewDBuf,1)?;
-        let has_app_token = Self::calculate_has_app_token(&app_token);
-        let has_user_token = Self::calculate_has_user_token(&user_token);*/
-        let app_token =Token::from_vec(app_token_v);
-        let user_token =Token::from_vec(user_token_v);
+        let app_token = match app_token_v{
+            None => {Token::None}
+            Some(v) => {Token::App(v)}
+        };
+        let user_token = match user_token_v{
+            None => {Token::None}
+            Some(v) => {Token::App(v)}
+        };// maybe we can release Token public so only get a token insted of a vector of bytes
         Ok(Self {d_buf_id,rolling_version,app_token,user_token,max_depth,tables: vec![], raw_values: vec![], current_size: 0, current_depth: 0 } )
     }
-    fn calculate_token_esize(app_token : &Vec<u8>, user_token : &Vec<u8>) -> Re<u8> {
-        let max = cmp::max(app_token.len() , user_token.len());
-        let esize = 0usize.leading_zeros() - max.leading_zeros() ;
-        if esize > 15 { Err(DErr::RootError(Fe::CalculateTokenEsize,1,Rc::TokenTooLarge(esize)))}
-        else{Ok(esize as u8)}
-    }
-    fn calculate_has_app_token(at : &Vec<u8>) -> bool {at.len() > 0}
-    fn calculate_has_user_token(ut : &Vec<u8>) -> bool {ut.len() > 0}
     pub fn build_tables(&mut self, table_in: &DTableBox) -> Re<()> {
         // Use instance method (delegates to static internally, no instance data used)
         let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
@@ -82,11 +77,20 @@ impl DBuftBuilderTOTO{
         self.raw_values.append(&mut values);
         self.current_depth += 1;
     }
-    pub fn build_rowvalues(&self,structure : DTableBox ) -> Re<()> {
+    pub fn build_rowvalues(&mut self, structure : DTableBox ) -> Re<()> {
+        let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size());
+        self.push_header_rowvalues( &mut raw_values);
+        self.tables.iter().try_for_each(|table| {table.push_rowvalues(&mut raw_values)})?;
         Ok(())
+    }
 
-       /* self.tables
-        */
+
+    pub fn push_header_rowvalues(&self,rv : &mut Vec<u8> ) -> (){
+        rv.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
+        rv.extend_from_slice(&self.d_buf_id.to_le_bytes());
+        if let Some(t) =  self.app_token.get() {rv.append(&mut t.clone())}  // todo check clone !!
+        if let Some(t) =  self.user_token.get() {rv.append(&mut t.clone())}
+        // for now there is no table info in header, we can only reach the first table (who links others)
     }
     fn calculate_total_size(&self) -> Bsize {
        self.tables.iter().map(|v| v.calculate_size()).sum::<Bsize>()

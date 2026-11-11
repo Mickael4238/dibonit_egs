@@ -107,6 +107,7 @@ impl DColumn {
             DColumn::Child(_,_)  => 4,
         }
     }
+    pub const HEADER_SIZE : Csize = 2;
 }
 /*
 impl fmt::Display for DColumn {
