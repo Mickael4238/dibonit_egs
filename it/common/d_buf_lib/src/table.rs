@@ -39,23 +39,29 @@ impl DBufTable {
             + self.row_capacity as Bsize * self.row_size  as Bsize
     }
     pub(crate) fn calculate_header_size(&self) ->Bsize{
-        size_of::<Tid>() + size_of::<Rcapa>() + size_of::<u8>()
+        // ID            + Row capacity       + Row size            + Column count
+        size_of::<Tid>() + size_of::<Rcapa>() + size_of::<Rsize>()  + size_of::<Cid>()
             + self.columns.len() as Bsize * DColumn::HEADER_SIZE as Bsize
     }
+
     pub fn push_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
-        self.push_header_rowvalues( rv);
+        self.push_header_rowvalues(rv);
         self.calculate_column_links();
         self.push_data_rowvalues(rv);
         Ok(())
     }
     pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
-        todo!()
+        rv.extend_from_slice(&self.table_id.to_le_bytes());
+        rv.extend_from_slice(&self.row_capacity.to_le_bytes());
+        rv.extend_from_slice(&self.row_size.to_le_bytes());
+        rv.extend_from_slice(&(self.columns.len() as Cid).to_le_bytes());
+        Ok(())
     }
     pub fn calculate_column_links(&self) -> Re<()>{
         todo!()
     }
     pub fn push_data_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
-        todo!()
+        todo!("need to receive values from upper...")
     }
     pub(crate) fn from_bytes(p0: &Vec<u8>) -> Re<Self>  {
         todo!()
