@@ -44,12 +44,6 @@ impl DBufTable {
             + self.columns.len() as Bsize * DColumn::HEADER_SIZE as Bsize
     }
 
-    pub fn push_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
-        self.push_header_rowvalues(rv);
-        self.calculate_column_links();
-        self.push_data_rowvalues(rv);
-        Ok(())
-    }
     pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
         rv.extend_from_slice(&self.table_id.to_le_bytes());
         rv.extend_from_slice(&self.row_capacity.to_le_bytes());
@@ -60,9 +54,7 @@ impl DBufTable {
     pub fn calculate_column_links(&self) -> Re<()>{
         todo!()
     }
-    pub fn push_data_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
-        todo!("need to receive values from upper...")
-    }
+
     pub(crate) fn from_bytes(p0: &Vec<u8>) -> Re<Self>  {
         todo!()
     }

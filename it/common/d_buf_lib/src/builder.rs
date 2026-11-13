@@ -48,7 +48,6 @@ impl DBuftBuilderTOTO{
         }
         Ok(())
     }
-
     fn push_table(&mut self, table: DBufTable)-> Re<()>  {
         match self.tables.iter_mut().find(|t| t.table_id == table.table_id) {
             Some(t) => {
@@ -77,14 +76,32 @@ impl DBuftBuilderTOTO{
         self.raw_values.append(&mut values);
         self.current_depth += 1;
     }
-    pub fn build_rowvalues(&mut self, structure : DTableBox ) -> Re<()> {
-        let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size());
+    pub fn build_rowvalues(&mut self, t_box : &DTableBox ) -> Re<()> {
+        let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
         self.push_header_rowvalues( &mut raw_values);
-        self.tables.iter().try_for_each(|table| {table.push_rowvalues(&mut raw_values)})?;
+        self.tables.iter().try_for_each(|table| {
+            let tid = table.table_id;
+            table.push_header_rowvalues(&mut raw_values)?;
+            DBuftBuilderTOTO::push_box_value(&mut raw_values,t_box,tid) // TODO place somewhere else
+        })?;
         Ok(())
     }
-
-
+    fn push_box_value(rv : &mut Vec<u8>, table_in: &DTableBox,tid : Tid)  -> Re<()> {
+        // TODO place somewhere else //todo replace by only get id
+        let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
+        if (table_id == tid){
+            table_in.push_rowvalues(rv).d_err_map(Fe::BuildHeaders,1)?;
+        }
+        let table_capa = table_in.get_capa();
+        // Process children recursively
+        for column in columns {
+            for rid in 0..table_capa {
+                let child_table = table_in.get_children_table(column.id(), rid).d_err_map(Fe::BuildHeaders, 1)?;
+                DBuftBuilderTOTO::push_box_value(rv, &child_table,tid)?
+            }
+        }
+        Ok(())
+    }
     pub fn push_header_rowvalues(&self,rv : &mut Vec<u8> ) -> (){
         rv.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
         rv.extend_from_slice(&self.d_buf_id.to_le_bytes());
@@ -187,6 +204,10 @@ mod tests {
                 Tables::Product(dv) => {dv.len() as Rcapa}
             }
         }
+
+        fn push_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()> {
+            todo!()
+        }
     }
     #[derive(Clone)]
     pub struct Product {
@@ -247,7 +268,7 @@ mod tests {
         let ub : DTableBox = Box::new(Tables::User(users));
         builder.build_tables(&ub).unwrap();
         builder.print_tables();
-        builder.build_rowvalues(ub).unwrap();
+        builder.build_rowvalues(&ub).unwrap();
 
     }
 }

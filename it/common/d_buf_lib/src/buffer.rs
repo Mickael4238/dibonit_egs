@@ -98,7 +98,7 @@ impl DBufTOTO {
     pub fn new(structure :DTableBox,d_buf_id : u16, app_token : Option<Vec<u8>>, user_token :Option<Vec<u8>>, max_depth: u8 ) -> Re<Self> {
         let mut builder = DBuftBuilderTOTO::new(d_buf_id,RollingVersion::Current, app_token, user_token, max_depth).d_err_map(Fe::NewDBuf, 1)?;
         builder.build_tables(&structure).d_err_map(Fe::NewDBuf, 1)?;
-        builder.build_rowvalues(structure).d_err_map(Fe::NewDBuf,2)?;
+        builder.build_rowvalues(&structure).d_err_map(Fe::NewDBuf,2)?;
         builder.consume().d_err_map(Fe::NewDBuf,3)
     }
     pub fn new_basic(structure : DTableBox,max_depth : u8) -> Re<Self> {
