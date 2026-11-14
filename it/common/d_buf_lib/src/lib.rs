@@ -1,3 +1,5 @@
+extern crate core;
+
 mod buffer;
 mod builder;
 mod table;
@@ -763,9 +765,9 @@ pub enum Rc {
     DuplicateColumnId(Cid), ReservedColumnId, InvalidColumnType(u8), InvalidColumnSize, ColumnIdExceeded, InvalidDBufId, ColumnCountExceeded, RowSizeExceeded, MissingSizeForVariableType,
     CapacityExceeded, RowCapacityZero, DataSizeMismatch, IndexOutOfBounds, ColumnNotFound(u16), BufferTooSmall,
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
-    InvalidChildOffset(u16), ColumnNotChild(u16), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge(u32),
+    InvalidChildOffset(u16), ColumnNotChild(Cid), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge(u32),
     DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,
-    MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa)
+    MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa),ColumnNotRow(Cid)
 }
 
 impl fmt::Display for Rc {
@@ -803,6 +805,7 @@ impl fmt::Display for Rc {
             Rc::MaxVersionExceeded=> write!(f, "MaxVersionExceeded"),
             Rc::RowTooShort=> write!(f, "RowTooShort"),
             Rc::InvalidRowIndex(i) => write!(f, "InvalidRowIndex({})", i),
+            Rc::ColumnNotRow(id) => write!(f, "ColumnNotRow({})", id),
         }
     }
 }

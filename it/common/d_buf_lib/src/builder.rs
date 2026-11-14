@@ -82,26 +82,11 @@ impl DBuftBuilderTOTO{
         self.tables.iter().try_for_each(|table| {
             let tid = table.table_id;
             table.push_header_rowvalues(&mut raw_values)?;
-            DBuftBuilderTOTO::push_box_value(&mut raw_values,t_box,tid) // TODO place somewhere else
+            t_box.push_box_value_rec(&mut raw_values,table.table_id,&self.tables) // TODO place somewhere else
         })?;
         Ok(())
     }
-    fn push_box_value(rv : &mut Vec<u8>, table_in: &DTableBox,tid : Tid)  -> Re<()> {
-        // TODO place somewhere else //todo replace by only get id
-        let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
-        if (table_id == tid){
-            table_in.push_rowvalues(rv).d_err_map(Fe::BuildHeaders,1)?;
-        }
-        let table_capa = table_in.get_capa();
-        // Process children recursively
-        for column in columns {
-            for rid in 0..table_capa {
-                let child_table = table_in.get_children_table(column.id(), rid).d_err_map(Fe::BuildHeaders, 1)?;
-                DBuftBuilderTOTO::push_box_value(rv, &child_table,tid)?
-            }
-        }
-        Ok(())
-    }
+
     pub fn push_header_rowvalues(&self,rv : &mut Vec<u8> ) -> (){
         rv.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
         rv.extend_from_slice(&self.d_buf_id.to_le_bytes());
@@ -151,7 +136,7 @@ mod tests {
                 match self {
                     Tables::User(_)    => {vec![
                         DColumn::U32(1),
-                        DColumn::UtcTime(2),
+                        DColumn::Char(2,50),
                         DColumn::Child(3,0),
                         DColumn::Child(4,0),
                     ]}
@@ -176,7 +161,7 @@ mod tests {
                 Tables::User(dv)    => {
                     let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(cid)))?;
                     match cid {
-                        3 => Tables::Order(user.orders.clone()),
+                        3 => Tables::Order(user.orders.clone()), //todo clone to remove
                         4 => Tables::City(user.cities.clone()),
                         _ => return Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotFound(cid)))
                     }
@@ -205,16 +190,46 @@ mod tests {
             }
         }
 
-        fn push_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()> {
-            todo!()
+        fn get_val_as_byte_slice(&self, cid: Cid,rid : Rcapa)-> Re<Box<[u8]>> {
+            match self {
+                Tables::User(dv)    => {
+                    let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(cid)))?;
+                    match cid {
+                        1 => Ok(Box::new(user.id.to_le_bytes())),
+                        2 => Ok(Box::new(*user.name.as_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ => Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    }
+                }
+                Tables::City(dv)    => {
+                    let city = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(cid)))?;
+                    match cid {
+                        1 => Ok(Box::new(city.id.to_le_bytes())),
+                        2 => Ok(Box::new(*city.name.as_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    }
+                }
+                Tables::Order(dv)   => {
+                    let order = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(cid)))?;
+                    match cid {
+                        1 => Ok(Box::new(order.id.to_le_bytes())),
+                        2 => Ok(Box::new(order.date.to_le_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    }
+                }
+                Tables::Product(dv) => {
+                    let product = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(cid)))?;
+                    match cid {
+                        1 => Ok(Box::new(product.id.to_le_bytes())),
+                        2 => Ok(Box::new(*product.name.as_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        3 => Ok(Box::new(product.id.to_le_bytes())),
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    }
+                }
+            }
         }
     }
     #[derive(Clone)]
-    pub struct Product {
-        id: u32,
-        name: String,
-        price: f32
-    }
+    pub struct Product { id: u32, name: String,price: f32}
 
     #[derive(Clone)]
     struct Order { id: u32, date: u64, products: Vec<Product> }
