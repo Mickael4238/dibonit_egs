@@ -190,39 +190,39 @@ mod tests {
             }
         }
 
-        fn get_val_as_byte_slice(&self, cid: Cid,rid : Rcapa)-> Re<Box<[u8]>> {
+        fn get_val_as_byte_slice(&self, col: &DColumn,rid : Rcapa)-> Re<Vec<u8>> { //todo("check col or only id to pass")
             match self {
                 Tables::User(dv)    => {
-                    let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(cid)))?;
-                    match cid {
-                        1 => Ok(Box::new(user.id.to_le_bytes())),
-                        2 => Ok(Box::new(*user.name.as_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
-                        _ => Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {
+                        1 => Ok(user.id.to_le_bytes().to_vec()),
+                        2 => Ok(user.name.as_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ => Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
                 Tables::City(dv)    => {
-                    let city = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(cid)))?;
-                    match cid {
-                        1 => Ok(Box::new(city.id.to_le_bytes())),
-                        2 => Ok(Box::new(*city.name.as_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
-                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    let city = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {
+                        1 => Ok(city.id.to_le_bytes().to_vec()),
+                        2 => Ok(city.name.as_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
                 Tables::Order(dv)   => {
-                    let order = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(cid)))?;
-                    match cid {
-                        1 => Ok(Box::new(order.id.to_le_bytes())),
-                        2 => Ok(Box::new(order.date.to_le_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
-                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    let order = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {
+                        1 => Ok(order.id.to_le_bytes().to_vec()),
+                        2 => Ok(order.date.to_le_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
                 Tables::Product(dv) => {
-                    let product = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(cid)))?;
-                    match cid {
-                        1 => Ok(Box::new(product.id.to_le_bytes())),
-                        2 => Ok(Box::new(*product.name.as_bytes())),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
-                        3 => Ok(Box::new(product.id.to_le_bytes())),
-                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(cid)))
+                    let product = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {
+                        1 => Ok(product.id.to_le_bytes().to_vec()),
+                        2 => Ok(product.name.as_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        3 => Ok(product.id.to_le_bytes().to_vec()),
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
             }

@@ -9,7 +9,7 @@ pub trait DBuffTablesTrait{
     fn get_children_table(&self, cid: Cid, rid :Rcapa) -> Re<DTableBox>;
     fn get_table_info(&self) -> Re<(Tid, Vec<DColumn>)>;
     fn get_capa(&self) -> Rcapa;
-    fn get_val_as_byte_slice(&self, cid: Cid, rid :Rcapa)-> Re<Box<[u8]>>;
+    fn get_val_as_byte_slice(&self, col: &DColumn, rid :Rcapa)-> Re<Vec<u8>>;
     fn push_box_value_rec(&self, rv : &mut Vec<u8>, cur_tid: Tid,d_table : &Vec<DBufTable>) -> Re<()> {
         let (table_id, cols) = self.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
         let tcapa = self.get_capa();
@@ -22,8 +22,7 @@ pub trait DBuffTablesTrait{
             for rid in 0..tcapa {
                 for column in cols {
                     if !column.is_child() {
-                        let a = self.get_val_as_byte_slice(column.id(),rid)?;
-                        rv.extend_from_slice(a.iter().as_slice());
+                        rv.append(&mut self.get_val_as_byte_slice(column, rid)?);
                     }else {
                         todo!("calculate child offsets with d_table")
                     }
