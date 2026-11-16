@@ -41,7 +41,5 @@ pub trait DBuffTablesTrait{
         }
         Ok(())
     }
-
-
 }
 

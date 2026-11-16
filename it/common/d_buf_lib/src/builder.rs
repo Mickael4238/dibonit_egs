@@ -191,11 +191,11 @@ mod tests {
         }
 
         fn get_val_as_byte_slice(&self, col: &DColumn,rid : Rcapa)-> Re<Vec<u8>> { //todo("check col or only id to pass")
-            match self {
+            match self { //TODO!("use convert_to_bytes_dynamic everywhere")
                 Tables::User(dv)    => {
                     let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(col.id())))?;
                     match col.id() {
-                        1 => Ok(user.id.to_le_bytes().to_vec()),
+                        1 => col.convert_to_bytes_dynamic(&user.id).d_err_map(Fe::GetValAsByteSlice,1),
                         2 => Ok(user.name.as_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
                         _ => Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }

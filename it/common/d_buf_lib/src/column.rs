@@ -1,3 +1,4 @@
+use std::any::Any;
 use d_err_lib::{DErr, DErrMap};
 use crate::{Fe, Rc, Re,Bsize};
 use crate::buffer::Bpos;
@@ -39,7 +40,7 @@ impl DColumn {
     }
     pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_,_)) }
 
-    pub fn id(&self) -> Cid{match self {
+    pub fn id(&self) -> Cid{match self {    // The id is not type dependant; a table can be built with 5 Booleans, each with a different id
             DColumn::Boolean(id)   => *id,
             DColumn::U8     (id)   => *id,
             DColumn::U16    (id)   => *id,
@@ -57,6 +58,80 @@ impl DColumn {
             DColumn::String (id,_) => *id,
             DColumn::Child  (id,_) => *id,
     }}
+
+    pub fn convert_to_bytes_dynamic(&self,param: &dyn Any) -> Re<Vec<u8>> {
+        //TODO ALL CONVERSIONS CORRECTLY
+        match self {    // The id is not type dependant; a table can be built with 5 Booleans, each with a different id
+            DColumn::Boolean(id)   => {
+                todo!()
+            }
+            DColumn::U8     (id)   => {
+                if let Some(num) = param.downcast_ref::<u8>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::U16    (id)   => {
+                if let Some(num) = param.downcast_ref::<u16>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::U32    (id)   => {
+                if let Some(num) = param.downcast_ref::<u32>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::U64    (id)   => {
+                if let Some(num) = param.downcast_ref::<u64>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::I8     (id)   => {
+                if let Some(num) = param.downcast_ref::<i8>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::I16    (id)   => {
+                if let Some(num) = param.downcast_ref::<i16>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::I32    (id)   => {
+                if let Some(num) = param.downcast_ref::<i32>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::I64    (id)   => {
+                if let Some(num) = param.downcast_ref::<i64>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::F32    (id)   => {
+                if let Some(num) = param.downcast_ref::<f32>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::F64    (id)   => {
+                if let Some(num) = param.downcast_ref::<f64>() {
+                    Ok(num.to_le_bytes().to_vec())
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
+            }
+            DColumn::UtcTime(id)   => {
+                todo!()
+            }
+            DColumn::Char   (id,_) => {
+                todo!()
+            }
+            DColumn::Ascii  (id,_) =>{
+                todo!()
+            }
+            DColumn::String (id,_) => {
+                todo!()
+            }
+            DColumn::Child  (id,_) => {
+                todo!()
+            }
+        }
+    }
 
     //  read column from rows and update current_index depending on the column type.
     //  1 read 5bit for col_type_id, and 3+8bit for col_id = 2 bytes
@@ -144,6 +219,7 @@ pub fn read_bsize2(row: &[u8], current_index: &mut Bsize) -> Re<Bsize> {
     let b4= read_byte(row,current_index).d_err_map(Fe::FromRow,4)? as Bsize;
     Ok(b1 << 24 | (2 << 16 | b3 << 8 | b4))
 }
+
 
 #[cfg(test)]
 mod tests {

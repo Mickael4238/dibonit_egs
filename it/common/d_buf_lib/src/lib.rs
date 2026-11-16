@@ -767,7 +767,7 @@ pub enum Rc {
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
     InvalidChildOffset(u16), ColumnNotChild(Cid), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge(u32),
     DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,
-    MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa),ColumnNotRow(Cid)
+    MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa),ColumnNotRow(Cid),ColumnValueNotU8(Cid)
 }
 
 impl fmt::Display for Rc {
@@ -806,6 +806,7 @@ impl fmt::Display for Rc {
             Rc::RowTooShort=> write!(f, "RowTooShort"),
             Rc::InvalidRowIndex(i) => write!(f, "InvalidRowIndex({})", i),
             Rc::ColumnNotRow(id) => write!(f, "ColumnNotRow({})", id),
+            Rc::ColumnValueNotU8(id) => write!(f, "ColumnValueNotU8({})", id),
         }
     }
 }
@@ -815,7 +816,7 @@ pub enum Fe {
     NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
     GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
     CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable,OrderGetChildStructure,ProductGetChildStructure,CityGetChildStructure,BuildTable,
-    GetChildrenTable,CalculateTokenEsize
+    GetChildrenTable,CalculateTokenEsize,ConvertToBytesDynamic,GetValAsByteSlice
 }
 
 #[cfg(test)]
