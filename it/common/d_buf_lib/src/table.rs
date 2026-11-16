@@ -41,7 +41,7 @@ impl DBufTable {
     pub(crate) fn calculate_header_size(&self) ->Bsize{
         // ID            + Row capacity       + Row size            + Column count
         size_of::<Tid>() + size_of::<Rcapa>() + size_of::<Rsize>()  + size_of::<Cid>()
-            + self.columns.len() as Bsize * DColumn::HEADER_SIZE as Bsize
+            + self.columns.iter().map(|c| c.calculate_header_size()).sum::<Bsize>()
     }
 
     pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
@@ -49,6 +49,9 @@ impl DBufTable {
         rv.extend_from_slice(&self.row_capacity.to_le_bytes());
         rv.extend_from_slice(&self.row_size.to_le_bytes());
         rv.extend_from_slice(&(self.columns.len() as Cid).to_le_bytes());
+        for col in &self.columns {
+            todo!("calcul necessary data to push to rv inside the colomn header list (part of the table header) in order to be able to retrive the location of the child table in the row values")
+        }
         Ok(())
     }
     pub fn calculate_column_links(&self) -> Re<()>{

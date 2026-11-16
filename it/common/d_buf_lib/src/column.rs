@@ -63,7 +63,9 @@ impl DColumn {
         //TODO ALL CONVERSIONS CORRECTLY
         match self {    // The id is not type dependant; a table can be built with 5 Booleans, each with a different id
             DColumn::Boolean(id)   => {
-                todo!()
+                if let Some(bool) = param.downcast_ref::<bool>() {
+                    Ok(vec![if *bool {1} else {0}])
+                }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
             }
             DColumn::U8     (id)   => {
                 if let Some(num) = param.downcast_ref::<u8>() {
@@ -118,16 +120,16 @@ impl DColumn {
             DColumn::UtcTime(id)   => {
                 todo!()
             }
-            DColumn::Char   (id,_) => {
+            DColumn::Char   (id,size) => {
                 todo!()
             }
-            DColumn::Ascii  (id,_) =>{
+            DColumn::Ascii  (id,size) =>{
                 todo!()
             }
-            DColumn::String (id,_) => {
+            DColumn::String (id,size) => {
                 todo!()
             }
-            DColumn::Child  (id,_) => {
+            DColumn::Child  (id,size) => {
                 todo!()
             }
         }
@@ -182,7 +184,10 @@ impl DColumn {
             DColumn::Child(_,_)  => 4,
         }
     }
-    pub const HEADER_SIZE : Csize = 2;
+    pub fn calculate_header_size(&self) -> Bsize {
+        if self.is_child() |  self.requires_size_field() {4}
+        else {2}
+    }
 }
 /*
 impl fmt::Display for DColumn {
