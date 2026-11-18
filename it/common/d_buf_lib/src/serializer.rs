@@ -46,8 +46,10 @@ pub trait DBuffTablesTrait{
 }
 pub trait serialize_num{fn to_bytes_v(&self) -> Vec<u8>;}
 impl serialize_num for u8{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
+impl serialize_num for u16{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
 impl serialize_num for u32{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
 impl serialize_num for u64{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
+impl serialize_num for usize{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
 
 pub trait serialize_str {
     fn to_ascii_bytes(&self, size: usize) ->  Re<Vec<u8>>;

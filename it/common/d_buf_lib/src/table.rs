@@ -1,5 +1,7 @@
 //use std::collections::HashMap;
 use crate::*;
+use crate::serializer::serialize_num;
+
 // note: the maximum size in byte for the table is:
 //    Rcapa * Rsize + 10 bytes (table structure) + columns structs todo(give the max size)
 //     = 0xFFFE0001 + 0xA                        +
@@ -45,10 +47,10 @@ impl DBufTable {
     }
 
     pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
-        rv.extend_from_slice(&self.table_id.to_le_bytes());
-        rv.extend_from_slice(&self.row_capacity.to_le_bytes());
-        rv.extend_from_slice(&self.row_size.to_le_bytes());
-        rv.extend_from_slice(&(self.columns.len() as Cid).to_le_bytes());
+        rv.extend_from_slice(&self.table_id.to_bytes_v());
+        rv.extend_from_slice(&self.row_capacity.to_bytes_v());
+        rv.extend_from_slice(&self.row_size.to_bytes_v());
+        rv.extend_from_slice(&(self.columns.len() as Cid).to_bytes_v());
         for col in &self.columns {
             todo!("calcul necessary data to push to rv inside the colomn header list (part of the table header) in order to be able to retrive the location of the child table in the row values")
         }
