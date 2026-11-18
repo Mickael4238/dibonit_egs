@@ -52,7 +52,7 @@ impl DBufTable {
         rv.extend_from_slice(&self.row_size.to_bytes_v());
         rv.extend_from_slice(&(self.columns.len() as Cid).to_bytes_v());
         for col in &self.columns {
-            todo!("calcul necessary data to push to rv inside the colomn header list (part of the table header) in order to be able to retrive the location of the child table in the row values")
+            col.push_header_rowvalues( rv);
         }
         Ok(())
     }

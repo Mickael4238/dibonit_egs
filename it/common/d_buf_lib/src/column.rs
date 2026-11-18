@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cell::Cell;
 use d_err_lib::{DErr, DErrMap};
 use crate::{Fe, Rc, Re,Bsize};
 use crate::buffer::Bpos;
@@ -12,7 +13,7 @@ pub type Csize = u16;   // type of column size
 type Ctype = u8;    // type of column type (note: only 5 bits)
 #[derive(Debug, Clone, PartialEq)]
 pub enum DColumn {
-    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Bpos),
+    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Cell<Bpos> ),
 }
 impl DColumn {
     pub fn type_id(&self) -> Ctype {
@@ -35,9 +36,21 @@ impl DColumn {
             DColumn::Child  (_,_) => 15, //ID CHILD_POSITION
         }
     }
-
     pub fn requires_size_field(&self) -> bool {
         matches!(self, DColumn::Char(_,_) | DColumn::Ascii(_,_) | DColumn::String(_,_))
+    }
+
+    pub fn get_size_field(&self) -> Option<Csize> {
+        match self{
+            DColumn::Char(_,s) | DColumn::Ascii(_,s) | DColumn::String(_,s) => Some(*s),
+            _ => None,
+        }
+    }
+    pub fn get_child_table_position_field(&self) -> Option<&Cell<Bpos>> {
+        match self{
+            DColumn::Child(_,p)=> Some(p),
+            _ => None,
+        }
     }
     pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_,_)) }
 
@@ -59,6 +72,20 @@ impl DColumn {
             DColumn::String (id,_) => *id,
             DColumn::Child  (id,_) => *id,
     }}
+
+    pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
+        let b1 = self.type_id() << COL_TYPE_SHIFT | (self.id() >> 8) as u8;
+        rv.push(b1);
+        let b2 = self.id() as u8;
+        rv.push(b2);
+        if let  Some(a) = self.get_size_field() {
+            rv.append(&mut a.to_bytes_v());
+        }
+        if let Some(p) = self.get_child_table_position_field() {
+            rv.append(&mut p.get().to_bytes_v());
+        }
+        Ok(())
+    }
 
     pub fn convert_to_bytes_dynamic(&self,param: &dyn Any) -> Re<Vec<u8>> {
         //TODO ALL CONVERSIONS CORRECTLY
@@ -156,7 +183,7 @@ impl DColumn {
             9  => Ok(DColumn::F32(col_id)), 10 => Ok(DColumn::F64(col_id)), 11 => Ok(DColumn::UtcTime(col_id)),
             15 => {
                 let child_position = read_bsize2(row,current_index).d_err_map(Fe::FromRow,5)?;
-                Ok(DColumn::Child(col_id,child_position))
+                Ok(DColumn::Child(col_id,Cell::new(child_position)))
             } ,
             _ => {
                 let b3= read_byte(row,current_index).d_err_map(Fe::FromRow,3)? as Csize;
@@ -269,7 +296,7 @@ mod tests {
         assert_eq!(DColumn::Char(0, 1).type_id(), 12);
         assert_eq!(DColumn::Ascii(0, 1).type_id(), 13);
         assert_eq!(DColumn::String(0, 1).type_id(), 14);
-        assert_eq!(DColumn::Child(0,1).type_id(), 15);
+        assert_eq!(DColumn::Child(0,Cell::new(0)).type_id(), 15);
     }
 
     // ---------- requires_size_field / is_child ----------
@@ -279,7 +306,7 @@ mod tests {
         assert!(!DColumn::Boolean(1).requires_size_field());
         assert!(!DColumn::F64(1).requires_size_field());
         assert!(!DColumn::UtcTime(1).requires_size_field());
-        assert!(!DColumn::Child(1,0).requires_size_field());
+        assert!(!DColumn::Child(1,Cell::new(0)).requires_size_field());
         assert!(DColumn::Char(1, 4).requires_size_field());
         assert!(DColumn::Ascii(1, 4).requires_size_field());
         assert!(DColumn::String(1, 4).requires_size_field());
@@ -287,7 +314,7 @@ mod tests {
 
     #[test]
     fn is_child_only_for_child() {
-        assert!(DColumn::Child(3,0).is_child());
+        assert!(DColumn::Child(3,Cell::new(0)).is_child());
         assert!(!DColumn::String(3, 10).is_child());
         assert!(!DColumn::U64(3).is_child());
     }
@@ -308,7 +335,7 @@ mod tests {
         assert_eq!(DColumn::I64(0).size_of(), 8);
         assert_eq!(DColumn::F64(0).size_of(), 8);
         assert_eq!(DColumn::UtcTime(0).size_of(), 8);
-        assert_eq!(DColumn::Child(0,3).size_of(), 4);
+        assert_eq!(DColumn::Child(0,Cell::new(3)).size_of(), 4);
     }
 
     #[test]
@@ -458,7 +485,7 @@ mod tests {
             DColumn::Char(1, 4),
             DColumn::Ascii(1, 4),
             DColumn::String(1, 4),
-            DColumn::Child(1,0),
+            DColumn::Child(1,Cell::new(0)),
         ] {
             let tid = col.type_id();
             let needs_size = col.requires_size_field();

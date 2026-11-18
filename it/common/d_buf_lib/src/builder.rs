@@ -111,6 +111,7 @@ impl DBuftBuilderTOTO{
 }
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use crate::buffer::RollingVersion;
     use crate::serializer::{ serialize_num, serialize_str, DTableBox};
     use crate::serializer::{ DBuffTablesTrait};
@@ -137,8 +138,8 @@ mod tests {
                     Tables::User(_)    => {vec![
                         DColumn::U32(1),
                         DColumn::Char(2,50),
-                        DColumn::Child(3,0),
-                        DColumn::Child(4,0),
+                        DColumn::Child(3,Cell::new(0)),
+                        DColumn::Child(4,Cell::new(0)),
                     ]}
                     Tables::City(_)    => {vec![
                         DColumn::U32(1),
@@ -147,7 +148,7 @@ mod tests {
                     Tables::Order(_)   => {vec![
                         DColumn::U32(1),
                         DColumn::UtcTime(2),
-                        DColumn::Child(3,0),
+                        DColumn::Child(3,Cell::new(0)),
                     ]}
                     Tables::Product(_) => {vec![
                         DColumn::U32(1),
