@@ -760,6 +760,14 @@ fn fill_d_bufs(definitions: &[DBufDefinition], items: &[&dyn IntoDBuf], def_inde
     Ok(d_buf)
 }
 */
+
+#[derive(Debug)]
+pub enum Fe {
+    NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
+    GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
+    CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable,OrderGetChildStructure,ProductGetChildStructure,CityGetChildStructure,BuildTable,
+    GetChildrenTable,CalculateTokenEsize,ConvertToBytesDynamic,GetValAsByteSlice,ToAsciiBytes,ToCharBytes
+}
 #[derive(Debug)]
 pub enum Rc {
     DuplicateColumnId(Cid), ReservedColumnId, InvalidColumnType(u8), InvalidColumnSize, ColumnIdExceeded, InvalidDBufId, ColumnCountExceeded, RowSizeExceeded, MissingSizeForVariableType,
@@ -767,7 +775,7 @@ pub enum Rc {
     HeaderCorruption, RowCountExceedsCapacity, RowSizeMismatch, InvalidRollingVersion(u8),
     InvalidChildOffset(u16), ColumnNotChild(Cid), MaxDepthExceeded, DBufNotFound(u16), TokenTooLarge(u32),
     DBufIdMismatch, ColumnTypeMismatch, ColumnSizeMismatch, ExtraColumnInSecondDBuf, MissingColumnInSecondDBuf,
-    MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa),ColumnNotRow(Cid),ColumnValueNotU8(Cid)
+    MaxVersionExceeded,RowTooShort,InvalidRowIndex(Rcapa),ColumnNotRow(Cid),ColumnValueNotU8(Cid),NonAsciiString(String),StringTooBig(String,usize),
 }
 
 impl fmt::Display for Rc {
@@ -807,17 +815,13 @@ impl fmt::Display for Rc {
             Rc::InvalidRowIndex(i) => write!(f, "InvalidRowIndex({})", i),
             Rc::ColumnNotRow(id) => write!(f, "ColumnNotRow({})", id),
             Rc::ColumnValueNotU8(id) => write!(f, "ColumnValueNotU8({})", id),
+            Rc::NonAsciiString(s) => write!(f, "NonAsciiString({})", s),
+            Rc::StringTooBig(s,size) => write!(f, "StringTooBig({},{})", s, size),
         }
     }
 }
 
-#[derive(Debug)]
-pub enum Fe {
-    NewDBuf, NewColumnHeader, NewDBufHeader, FromTypeId, FromBytes, FromBytesDBuf, AddRows, AddRowWithChild,
-    GetRow, GetCol, GetChild, GetColumnMetadata, FindColumn, MaxDepthExceeded, DBufNotFound,
-    CompareStructure,BuildHeaders,ReadByte,FromRow,PushTable,OrderGetChildStructure,ProductGetChildStructure,CityGetChildStructure,BuildTable,
-    GetChildrenTable,CalculateTokenEsize,ConvertToBytesDynamic,GetValAsByteSlice
-}
+
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,9 @@
-use d_err_lib::DErrMap;
-use crate::{DColumn, Fe, Re};
+use std::any::Any;
+use d_err_lib::{DErr, DErrMap};
+use crate::{DColumn, Fe, Rc, Re};
+use crate::buffer::Bsize;
 use crate::builder::DBuftBuilderTOTO;
-use crate::column::Cid;
+use crate::column::{Cid,Csize};
 use crate::table::{DBufTable, Rcapa, Tid};
 pub type DTableBox = Box<dyn DBuffTablesTrait>;
 
@@ -42,29 +44,77 @@ pub trait DBuffTablesTrait{
         Ok(())
     }
 }
-pub trait serialize{
-    fn to_bytes(&self) -> Vec<u8>;
-}
+pub trait serialize_num{fn to_bytes_v(&self) -> Vec<u8>;}
+impl serialize_num for u8{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
+impl serialize_num for u32{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
+impl serialize_num for u64{fn to_bytes_v(&self) -> Vec<u8>{self.to_le_bytes().into()}}
 
-impl serialize for u8{
-    fn to_bytes(&self) -> Vec<u8> {
-        todo!()
+pub trait serialize_str {
+    fn to_ascii_bytes(&self, size: usize) ->  Re<Vec<u8>>;
+    fn to_char_bytes(&self, size: usize) ->   Re<Vec<u8>>;
+    fn to_bytes_v(&self, col: &DColumn) ->  Re<Vec<u8>>{
+        match col {
+            DColumn::Char(_, size) => {
+                self.to_char_bytes(*size as usize)
+            }
+            DColumn::Ascii(_, size) => {
+                self.to_ascii_bytes(*size as usize)
+            }
+            _ => {  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))}
+        }
     }
 }
-/* 	Static (Monomorphic): The compiler generates a separate copy of the function for every type S used.
- 	Faster: No runtime overhead. The call is inlined and optimized.
- 	Strongly Typed: The caller knows the exact type S.
- 	Stack Size	Zero: No heap allocation required for the function call itself.
- */
-pub fn convert_to_bytes<S: serialize>( param: S) -> Re<Vec<u8>> {
-    Ok(param.to_bytes())
+impl serialize_str for String{
+    fn to_ascii_bytes(&self, size: usize) ->  Re<Vec<u8>> {
+        if !self.is_ascii() { Err(DErr::RootError(Fe::ToAsciiBytes, 1, Rc::NonAsciiString(self.clone())))}
+        else {self.to_char_bytes(size).d_err_map(Fe::ToAsciiBytes, 1)}
+    }
+    fn to_char_bytes(&self, size: usize) ->   Re<Vec<u8>>{
+        if self.len() > size {  Err(DErr::RootError(Fe::ToCharBytes, 1, Rc::StringTooBig(self.clone(), size)))}
+        else{
+            let mut bytes = self.as_bytes().iter().copied().collect::<Vec<u8>>();
+            bytes.resize(size, 0);
+            Ok(bytes)
+        }
+    }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_serialize_num_u8() {
+        assert_eq!(u8::to_bytes_v(&1), vec![1]);
+        assert_eq!(u8::to_bytes_v(&255), vec![255]);
+    }
+    #[test]
+    fn test_serialize_num_u32() {
+        assert_eq!(u32::to_bytes_v(&1), vec![1, 0, 0, 0]);
+        assert_eq!(u32::to_bytes_v(&u32::MAX), vec![255,255, 255,255]);
+    }
+    #[test]
+    fn test_serialize_num_u64() {
+        assert_eq!(u64::to_bytes_v(&1), vec![1, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(u64::to_bytes_v(&u64::MAX), vec![255,255, 255,255,255,255, 255,255]);
+    }
+    #[test]
+    fn test_serialize_str_ascii() {
+        assert_eq!("Hi Toto 9 ! :-)".to_string().to_ascii_bytes(17).unwrap(), vec![72, 105, 32, 84, 111, 116, 111, 32, 57, 32, 33, 32, 58, 45, 41, 0, 0]);
 
-/*Dynamic (Polymorphic): The function uses a single copy and looks up the method at runtime via a vtable.
-Slower: Requires a vtable lookup and a pointer dereference.
-Fixed Size: The binary size is constant regardless of how many types implement serialize.
-Flexibility High: You can store heterogeneous types (e.g., Vec<Box<dyn serialize>>).
- */
-pub fn convert_to_bytes_dynamic(param: Box<dyn serialize>) -> Re<Vec<u8>> {
-    Ok(param.to_bytes())
+        match "Hi Toto 9 ! :-)".to_string().to_ascii_bytes(14) {
+            Ok(_) => { assert_eq!("","Error: expected to fail, but it didn't")}
+            Err(e) => {assert_eq!(e.to_string_chain(),"ToAsciiBytes[1]/ToCharBytes[1]=>StringTooBig(\"Hi Toto 9 ! :-)\", 14)".to_string())}
+        }
+        match "Hi Toto 9 ! :-)Ƣ".to_string().to_ascii_bytes(30) {
+            Ok(_) => { assert_eq!("","Error: expected to fail, but it didn't")}
+            Err(e) => {assert_eq!(e.to_string_chain(),"ToAsciiBytes[1]=>NonAsciiString(\"Hi Toto 9 ! :-)Ƣ\")".to_string())}
+        }
+    }
+    #[test]
+    fn test_serialize_str_char() {
+        assert_eq!("Hi Toto 9 ! :-)Ƣ".to_string().to_char_bytes(17).unwrap(), vec![72, 105, 32, 84, 111, 116, 111, 32, 57, 32, 33, 32, 58, 45, 41, 198, 162]);
+        match "Ƣ".to_string().to_char_bytes(1) {
+            Ok(_) => { assert_eq!("","Error: expected to fail, but it didn't")}
+            Err(e) => {assert_eq!(e.to_string_chain(),"ToCharBytes[1]=>StringTooBig(\"Ƣ\", 1)".to_string())}
+        }
+    }
 }

@@ -112,7 +112,7 @@ impl DBuftBuilderTOTO{
 #[cfg(test)]
 mod tests {
     use crate::buffer::RollingVersion;
-    use crate::serializer::{DTableBox,};
+    use crate::serializer::{ serialize_num, serialize_str, DTableBox};
     use crate::serializer::{ DBuffTablesTrait};
     use crate::table::Tid;
     use super::*;
@@ -194,34 +194,35 @@ mod tests {
             match self { //TODO!("use convert_to_bytes_dynamic everywhere")
                 Tables::User(dv)    => {
                     let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(col.id())))?;
-                    match col.id() {
-                        1 => col.convert_to_bytes_dynamic(&user.id).d_err_map(Fe::GetValAsByteSlice,1),
-                        2 => Ok(user.name.as_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                    match col.id() {//to_bytes_v
+                    //    1 => col.convert_to_bytes_dynamic(&user.id).d_err_map(Fe::GetValAsByteSlice,1),
+                        1 => Ok(user.id.to_bytes_v()),
+                        2 => Ok(user.name.to_bytes_v(col)?),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
                         _ => Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
                 Tables::City(dv)    => {
                     let city = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(col.id())))?;
                     match col.id() {
-                        1 => Ok(city.id.to_le_bytes().to_vec()),
-                        2 => Ok(city.name.as_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        1 => Ok(city.id.to_bytes_v()),
+                        2 => Ok(city.name.to_bytes_v(col)?),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
                         _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
                 Tables::Order(dv)   => {
                     let order = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(col.id())))?;
                     match col.id() {
-                        1 => Ok(order.id.to_le_bytes().to_vec()),
-                        2 => Ok(order.date.to_le_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        1 => Ok(order.id.to_bytes_v()),
+                        2 => Ok(order.date.to_bytes_v()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
                         _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
                 Tables::Product(dv) => {
                     let product = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(col.id())))?;
                     match col.id() {
-                        1 => Ok(product.id.to_le_bytes().to_vec()),
-                        2 => Ok(product.name.as_bytes().to_vec()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
-                        3 => Ok(product.id.to_le_bytes().to_vec()),
+                        1 => Ok(product.id.to_bytes_v()),
+                        2 => Ok(product.name.to_bytes_v(col)?),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        3 => Ok(product.id.to_bytes_v()),
                         _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }

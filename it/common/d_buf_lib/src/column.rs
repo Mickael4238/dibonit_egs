@@ -2,12 +2,13 @@ use std::any::Any;
 use d_err_lib::{DErr, DErrMap};
 use crate::{Fe, Rc, Re,Bsize};
 use crate::buffer::Bpos;
+use crate::serializer::{serialize_num,serialize_str};
 
 const COL_ID_HIGH_MASK: u8 = 0x07;
 const COL_TYPE_SHIFT :u8 = 3;
 
 pub(crate) type Cid = u16;     // type of column id
-type Csize = u16;   // type of column size
+pub type Csize = u16;   // type of column size
 type Ctype = u8;    // type of column type (note: only 5 bits)
 #[derive(Debug, Clone, PartialEq)]
 pub enum DColumn {
@@ -69,7 +70,7 @@ impl DColumn {
             }
             DColumn::U8     (id)   => {
                 if let Some(num) = param.downcast_ref::<u8>() {
-                    Ok(num.to_le_bytes().to_vec())
+                    Ok(num.to_bytes_v())
                 }else{Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))}
             }
             DColumn::U16    (id)   => {
