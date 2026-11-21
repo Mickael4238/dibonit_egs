@@ -5,8 +5,9 @@ mod builder;
 mod table;
 mod column;
 mod serializer;
+mod buffer_unsafe;
 
-use buffer::{DBufTOTO,Bsize,Rsize};
+use buffer::{DBufTOTO, Bsize, Rsize};
 use builder::DBuftBuilderTOTO;
 use table::DBufTable;
 use column::{DColumn,Cid};
