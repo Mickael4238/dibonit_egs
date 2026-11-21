@@ -2,7 +2,7 @@ use std::cmp;
 use crate::*;
 use crate::buffer::{RollingVersion, Token, Vsize};
 use crate::Rc::TokenTooLarge;
-use crate::serializer::{ DTableBox};
+use crate::serializer::{DTableBox, RecusrsityDepth};
 use crate::table::{Rcapa, Tid};
 
 pub struct DBuftBuilderTOTO {
@@ -88,13 +88,13 @@ impl DBuftBuilderTOTO{
         self.raw_values.append(&mut values);
         self.current_depth += 1;
     }
-    pub fn build_rowvalues(&mut self, t_box : &DTableBox ) -> Re<()> {
+    pub fn build_rowvalues(&mut self, table_in : &DTableBox ) -> Re<()> {
         let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
         self.push_header_rowvalues( &mut raw_values);
         self.tables.iter().try_for_each(|table| {
             let tid = table.table_id;
             table.push_header_rowvalues(&mut raw_values)?;
-            t_box.push_box_value_rec(&mut raw_values,table.table_id,&self.tables) // TODO place somewhere else
+            table_in.push_box_value_rec(&mut raw_values,table.table_id,&self.tables,&mut RecusrsityDepth::new(self.max_depth))
         })?;
         Ok(())
     }
