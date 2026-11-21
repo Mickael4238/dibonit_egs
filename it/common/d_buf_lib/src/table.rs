@@ -62,6 +62,9 @@ impl DBufTable {
             col.set_child_table_position_field(table_postition);
         })
     }
+    pub fn increment_row_count(&mut self, delta: Rcapa) {
+        self.row_count = self.row_count + delta;
+    }
     pub fn calculate_column_links(&self) -> Re<()>{
         todo!()
     }

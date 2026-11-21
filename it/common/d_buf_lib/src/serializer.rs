@@ -35,17 +35,28 @@ pub trait DBuffTablesTrait{
             self.push_child_rec(rv,cur_tid,d_table,tcapa,&cols,&next_rec).d_err_map(Fe::BuildHeaders,1)
         }else{Ok(())}//End of recursivity
     }
-    fn push_rowvalues(&self, rv: &mut Vec<u8>,d_table : &Vec<DBufTable>,tcapa : Rcapa, cols :&Vec<DColumn> )->Re<()>{
-            for rid in 0..tcapa {
-                for column in cols {
-                    if !column.is_child() {
-                        rv.append(&mut self.get_val_as_byte_slice(column, rid)?);
-                    }else {
-                       // todo!("calculate child offsets with d_table")
+    fn push_rowvalues(&self, rv: &mut Vec<u8>, d_table: &Vec<DBufTable>, tcapa : Rcapa, cols :&Vec<DColumn> ) ->Re<()>{
+        for rid in 0..tcapa {
+            for column in cols {
+                if let Some(col_tid) = column.is_child_get_table_id() {
+                    if let Some(col_table) = d_table.iter().filter(|t|t.table_id == col_tid).last(){
+                        let child_offset_in_table = col_table.row_count;
+                        //todo:there should be a faster way to do this
+                        let number_of_row_for_child = self.get_children_table(column.id(), rid).unwrap().get_capa();
+                        //todo increment the row count for the table (so next child will start at the right offset
+                        //col_table.increment_row_count(number_of_row_for_child);
+                        rv.extend_from_slice(&child_offset_in_table.to_bytes_v());
+                        rv.extend_from_slice(&number_of_row_for_child.to_bytes_v());
 
+                    }else{
+                        return Err(DErr::RootError(Fe::MaxDepthExceeded,1,Rc::CapacityExceeded));
                     }
+
+                } else {
+                    rv.append(&mut self.get_val_as_byte_slice(column, rid)?);
                 }
             }
+        }
         Ok(())
     }
     fn push_child_rec(&self, rv: &mut Vec<u8>, cur_tid: Tid, d_table : &Vec<DBufTable>,tcapa : Rcapa, cols :&Vec<DColumn> , rec: &RecusrsityDepth)->Re<()>{

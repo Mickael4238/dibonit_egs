@@ -66,6 +66,14 @@ impl DColumn {
         }
     }
     pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_,_,_)) }
+    pub fn is_child_get_table_id(&self) -> Option<Tid> {
+        match self{
+            DColumn::Child(_,tid,_)=> {
+                Some(*tid)
+            },
+            _ => None,
+        } 
+    }
 
     pub fn id(&self) -> Cid{match self {    // The id is not type dependant; a table can be built with 5 Booleans, each with a different id
             DColumn::Boolean(id)   => *id,
