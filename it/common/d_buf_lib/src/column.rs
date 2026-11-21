@@ -4,6 +4,7 @@ use d_err_lib::{DErr, DErrMap};
 use crate::{Fe, Rc, Re,Bsize};
 use crate::buffer::Bpos;
 use crate::serializer::{serialize_num,serialize_str};
+use crate::table::Tid;
 
 const COL_ID_HIGH_MASK: u8 = 0x07;
 const COL_TYPE_SHIFT :u8 = 3;
@@ -13,7 +14,7 @@ pub type Csize = u16;   // type of column size
 type Ctype = u8;    // type of column type (note: only 5 bits)
 #[derive(Debug, Clone, PartialEq)]
 pub enum DColumn {
-    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Cell<Bpos> ),
+    Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Tid,Cell<Bpos> ),
 }
 impl DColumn {
     pub fn type_id(&self) -> Ctype {
@@ -33,7 +34,7 @@ impl DColumn {
             DColumn::Char   (_,_) => 12, //ID SIZE
             DColumn::Ascii  (_,_) => 13, //ID SIZE
             DColumn::String (_,_) => 14, //ID SIZE
-            DColumn::Child  (_,_) => 15, //ID CHILD_POSITION
+            DColumn::Child  (_,_,_) => 15, //ID CHILD_POSITION
         }
     }
     pub fn requires_size_field(&self) -> bool {
@@ -48,11 +49,17 @@ impl DColumn {
     }
     pub fn get_child_table_position_field(&self) -> Option<&Cell<Bpos>> {
         match self{
-            DColumn::Child(_,p)=> Some(p),
+            DColumn::Child(_,_,p)=> Some(p),
             _ => None,
         }
     }
-    pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_,_)) }
+    pub fn set_child_table_position_field(&self,table_position : Bpos)  {
+        match self{
+            DColumn::Child(_,_,p)=> Some(p.set(table_position)),
+            _ => None,
+        };
+    }
+    pub fn is_child(&self) -> bool { matches!(self, DColumn::Child(_,_,_)) }
 
     pub fn id(&self) -> Cid{match self {    // The id is not type dependant; a table can be built with 5 Booleans, each with a different id
             DColumn::Boolean(id)   => *id,
@@ -70,7 +77,7 @@ impl DColumn {
             DColumn::Char   (id,_) => *id,
             DColumn::Ascii  (id,_) => *id,
             DColumn::String (id,_) => *id,
-            DColumn::Child  (id,_) => *id,
+            DColumn::Child  (id,_,_) => *id,
     }}
 
     pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
@@ -81,8 +88,8 @@ impl DColumn {
         if let  Some(a) = self.get_size_field() {
             rv.append(&mut a.to_bytes_v());
         }
-        if let Some(p) = self.get_child_table_position_field() {
-            rv.append(&mut p.get().to_bytes_v());
+        if let Some (child_table_position_cell) = self.get_child_table_position_field() {
+            rv.append(&mut child_table_position_cell.get().to_bytes_v());
         }
         Ok(())
     }
@@ -157,7 +164,7 @@ impl DColumn {
             DColumn::String (id,size) => {
                 todo!()
             }
-            DColumn::Child  (id,size) => {
+            DColumn::Child  (id,tid,tpos) => {
                 todo!()
             }
         }
@@ -183,7 +190,7 @@ impl DColumn {
             9  => Ok(DColumn::F32(col_id)), 10 => Ok(DColumn::F64(col_id)), 11 => Ok(DColumn::UtcTime(col_id)),
             15 => {
                 let child_position = read_bsize2(row,current_index).d_err_map(Fe::FromRow,5)?;
-                Ok(DColumn::Child(col_id,Cell::new(child_position)))
+                Ok(DColumn::Child(col_id,0,Cell::new(child_position))) //TODO READ ID FROM ROW??
             } ,
             _ => {
                 let b3= read_byte(row,current_index).d_err_map(Fe::FromRow,3)? as Csize;
@@ -209,7 +216,7 @@ impl DColumn {
             DColumn::U32(_) | DColumn::I32(_) | DColumn::F32(_) => 4,
             DColumn::U64(_) | DColumn::I64(_) | DColumn::F64(_) | DColumn::UtcTime(_) => 8,
             DColumn::Char(_,s) | DColumn::String(_,s)  | DColumn::Ascii(_,s) => *s,
-            DColumn::Child(_,_)  => 4,
+            DColumn::Child(_,_,_)  => 4, // TODO ADD TID IN ROW
         }
     }
     pub fn calculate_header_size(&self) -> Bsize {
@@ -296,7 +303,7 @@ mod tests {
         assert_eq!(DColumn::Char(0, 1).type_id(), 12);
         assert_eq!(DColumn::Ascii(0, 1).type_id(), 13);
         assert_eq!(DColumn::String(0, 1).type_id(), 14);
-        assert_eq!(DColumn::Child(0,Cell::new(0)).type_id(), 15);
+        assert_eq!(DColumn::Child(0,0,Cell::new(0)).type_id(), 15);
     }
 
     // ---------- requires_size_field / is_child ----------
@@ -306,7 +313,7 @@ mod tests {
         assert!(!DColumn::Boolean(1).requires_size_field());
         assert!(!DColumn::F64(1).requires_size_field());
         assert!(!DColumn::UtcTime(1).requires_size_field());
-        assert!(!DColumn::Child(1,Cell::new(0)).requires_size_field());
+        assert!(!DColumn::Child(1,0,Cell::new(0)).requires_size_field());
         assert!(DColumn::Char(1, 4).requires_size_field());
         assert!(DColumn::Ascii(1, 4).requires_size_field());
         assert!(DColumn::String(1, 4).requires_size_field());
@@ -314,7 +321,7 @@ mod tests {
 
     #[test]
     fn is_child_only_for_child() {
-        assert!(DColumn::Child(3,Cell::new(0)).is_child());
+        assert!(DColumn::Child(3,0,Cell::new(0)).is_child());
         assert!(!DColumn::String(3, 10).is_child());
         assert!(!DColumn::U64(3).is_child());
     }
@@ -335,7 +342,7 @@ mod tests {
         assert_eq!(DColumn::I64(0).size_of(), 8);
         assert_eq!(DColumn::F64(0).size_of(), 8);
         assert_eq!(DColumn::UtcTime(0).size_of(), 8);
-        assert_eq!(DColumn::Child(0,Cell::new(3)).size_of(), 4);
+        assert_eq!(DColumn::Child(0,0,Cell::new(3)).size_of(), 4);
     }
 
     #[test]
@@ -485,7 +492,7 @@ mod tests {
             DColumn::Char(1, 4),
             DColumn::Ascii(1, 4),
             DColumn::String(1, 4),
-            DColumn::Child(1,Cell::new(0)),
+            DColumn::Child(1,0,Cell::new(0)),
         ] {
             let tid = col.type_id();
             let needs_size = col.requires_size_field();

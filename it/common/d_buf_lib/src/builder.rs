@@ -28,25 +28,37 @@ impl DBuftBuilderTOTO{
         };// maybe we can release Token public so only get a token insted of a vector of bytes
         Ok(Self {d_buf_id,rolling_version,app_token,user_token,max_depth,tables: vec![], raw_values: vec![], current_size: 0, current_depth: 0 } )
     }
+
     pub fn build_tables(&mut self, table_in: &DTableBox) -> Re<()> {
-        // Use instance method (delegates to static internally, no instance data used)
-        let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
-        let capa = table_in.get_capa();
-        let table: DBufTable = DBufTable::new(table_id, columns,capa,false)?;
-        // Collect child column IDs before pushing the table
-        let child_column_ids: Vec<_> = table.columns.iter()
-            .filter(|c| c.is_child())
-            .map(|c| c.id())
-            .collect();
-        self.push_table(table).d_err_map(Fe::BuildTable,1)?;
-        // Process children recursively
-        for cid in child_column_ids {
-            for rid in 0..capa {
-                let child_table = table_in.get_children_table(cid,rid).d_err_map(Fe::BuildHeaders,1)?;
-                self.build_tables(&child_table).d_err_map(Fe::BuildTable,1)?;
-            }
-        }
+        self.build_tables_rec(table_in,&mut RecusrsityDepth::new(self.max_depth)).unwrap();
+        self.set_tables_positions();
+        self.build_rowvalues(table_in).unwrap();
         Ok(())
+    }
+
+    pub fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &mut RecusrsityDepth) -> Re<()> {
+        if rec.go_down() {
+            // Use instance method (delegates to static internally, no instance data used)
+            let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
+            let capa = table_in.get_capa();
+            let table: DBufTable = DBufTable::new(table_id, columns,capa,false)?;
+            // Collect child column IDs before pushing the table
+            let child_column_ids: Vec<_> = table.columns.iter()
+                .filter(|c| c.is_child())
+                .map(|c| c.id())
+                .collect();
+            self.push_table(table).d_err_map(Fe::BuildTable,1)?;
+            // Process children recursively
+            for cid in child_column_ids {
+                for rid in 0..capa {
+                    let child_table = table_in.get_children_table(cid,rid).d_err_map(Fe::BuildHeaders,1)?;
+                    self.build_tables_rec(&child_table,rec).d_err_map(Fe::BuildTable,1)?;
+                }
+            }
+            Ok(())
+        }else{
+            Ok(()) //End of recursivity
+        }
     }
     fn push_table(&mut self, table: DBufTable)-> Re<()>  {
         match self.tables.iter_mut().find(|t| t.table_id == table.table_id) {
@@ -138,21 +150,21 @@ mod tests {
                     Tables::User(_)    => {vec![
                         DColumn::U32(1),
                         DColumn::Char(2,50),
-                        DColumn::Child(3,Cell::new(0)),
-                        DColumn::Child(4,Cell::new(0)),
+                        DColumn::Child(3,Tables::Order(vec![]).id(),Cell::new(0)),
+                        DColumn::Child(4,Tables::City(vec![]).id(),Cell::new(0)),
                     ]}
                     Tables::City(_)    => {vec![
                         DColumn::U32(1),
-                        DColumn::String(2, 50),
+                        DColumn::Char(2, 50),
                     ]}
                     Tables::Order(_)   => {vec![
                         DColumn::U32(1),
                         DColumn::UtcTime(2),
-                        DColumn::Child(3,Cell::new(0)),
+                        DColumn::Child(3,Tables::Product(vec![]).id(),Cell::new(0)),
                     ]}
                     Tables::Product(_) => {vec![
                         DColumn::U32(1),
-                        DColumn::String(2, 50),
+                        DColumn::Char(2, 50),
                         DColumn::F32(3),
                     ]}
             }))
@@ -223,7 +235,7 @@ mod tests {
                     match col.id() {
                         1 => Ok(product.id.to_bytes_v()),
                         2 => Ok(product.name.to_bytes_v(col)?),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
-                        3 => Ok(product.id.to_bytes_v()),
+                        3 => Ok(product.price.to_bytes_v()),
                         _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
                     }
                 }
