@@ -80,14 +80,17 @@ impl DBuftBuilderTOTO{
             println!("table_id: {}, row_capacity: {}, columns: {:?}",table.table_id,table.row_capacity,table.columns);
         }
     }
-
-
-    //note, it might not be the best to push value, before having the entire size to malloc only once.
-    fn push_row_value(&mut self, mut values: Vec<u8>) {
-        self.current_size += values.len();
-        self.raw_values.append(&mut values);
-        self.current_depth += 1;
+    pub fn set_tables_positions(&mut self ) {
+        let mut current_table_pos = 0;
+        self.tables.iter().for_each(|table| {
+            let tid = table.table_id;
+            self.tables.iter().for_each(|table| {
+                table.set_table_position_for_columns(table.table_id,current_table_pos)
+            });
+            current_table_pos = current_table_pos + table.calculate_size();
+        })
     }
+
     pub fn build_rowvalues(&mut self, table_in : &DTableBox ) -> Re<()> {
         let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
         self.push_header_rowvalues( &mut raw_values);

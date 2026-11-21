@@ -1,5 +1,6 @@
 //use std::collections::HashMap;
 use crate::*;
+use crate::buffer::Bpos;
 use crate::serializer::serialize_num;
 
 // note: the maximum size in byte for the table is:
@@ -52,9 +53,14 @@ impl DBufTable {
         rv.extend_from_slice(&self.row_size.to_bytes_v());
         rv.extend_from_slice(&(self.columns.len() as Cid).to_bytes_v());
         for col in &self.columns {
-            col.push_header_rowvalues( rv);
+            col.push_header_rowvalues(rv);
         }
         Ok(())
+    }
+    pub fn set_table_position_for_columns (&self,tid : Tid,table_postition : Bpos){
+        self.columns.iter().for_each(|col|{
+            col.set_child_table_position_field(table_postition);
+        })
     }
     pub fn calculate_column_links(&self) -> Re<()>{
         todo!()
