@@ -36,8 +36,8 @@ impl DBuftBuilderTOTO{
         Ok(())
     }
 
-    pub fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &mut RecusrsityDepth) -> Re<()> {
-        if rec.go_down() {
+    pub fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &RecusrsityDepth) -> Re<()> {
+        if let Some (next_rec) = rec.go_down_rec() {
             // Use instance method (delegates to static internally, no instance data used)
             let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
             let capa = table_in.get_capa();
@@ -52,7 +52,7 @@ impl DBuftBuilderTOTO{
             for cid in child_column_ids {
                 for rid in 0..capa {
                     let child_table = table_in.get_children_table(cid,rid).d_err_map(Fe::BuildHeaders,1)?;
-                    self.build_tables_rec(&child_table,rec).d_err_map(Fe::BuildTable,1)?;
+                    self.build_tables_rec(&child_table,&next_rec).d_err_map(Fe::BuildTable,1)?;
                 }
             }
             Ok(())

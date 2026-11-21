@@ -15,9 +15,10 @@ impl RecusrsityDepth{
     pub fn new(max_depth: u8) -> Self {
         Self {depth : 0, max_depth}
     }
-    pub fn go_down(&mut self) -> bool {
-        self.depth = self.depth +1;
-        self.depth <= self.max_depth
+    pub fn go_down_rec(&self) -> Option<RecusrsityDepth> {
+        if self.depth < self.max_depth {
+            Some(Self {depth : self.depth +1, max_depth: self.max_depth})
+        }else{None}
     }
 }
 pub trait DBuffTablesTrait{
@@ -25,13 +26,13 @@ pub trait DBuffTablesTrait{
     fn get_table_info(&self) -> Re<(Tid, Vec<DColumn>)>;
     fn get_capa(&self) -> Rcapa;
     fn get_val_as_byte_slice(&self, col: &DColumn, rid :Rcapa)-> Re<Vec<u8>>;
-    fn push_box_value_rec(&self, rv : &mut Vec<u8>, cur_tid: Tid, d_table : &Vec<DBufTable>, rec: &mut RecusrsityDepth) -> Re<()> {
-        if rec.go_down() {
+    fn push_box_value_rec(&self, rv : &mut Vec<u8>, cur_tid: Tid, d_table : &Vec<DBufTable>, rec: &RecusrsityDepth) -> Re<()> {
+        if let Some(next_rec) = rec.go_down_rec() {
             let (table_id, cols) = self.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
             let tcapa = self.get_capa();
             if (table_id == cur_tid){ self.push_rowvalues(rv,d_table,tcapa,&cols).d_err_map(Fe::BuildHeaders,1)?;}
             // Process children recursively
-            self.push_child_rec(rv,cur_tid,d_table,tcapa,&cols,rec).d_err_map(Fe::BuildHeaders,1)
+            self.push_child_rec(rv,cur_tid,d_table,tcapa,&cols,&next_rec).d_err_map(Fe::BuildHeaders,1)
         }else{
             Ok(()) //End of recursivity
         }
@@ -49,7 +50,7 @@ pub trait DBuffTablesTrait{
             }
         Ok(())
     }
-    fn push_child_rec(&self, rv: &mut Vec<u8>, cur_tid: Tid, d_table : &Vec<DBufTable>,tcapa : Rcapa, cols :&Vec<DColumn> , rec: &mut RecusrsityDepth)->Re<()>{
+    fn push_child_rec(&self, rv: &mut Vec<u8>, cur_tid: Tid, d_table : &Vec<DBufTable>,tcapa : Rcapa, cols :&Vec<DColumn> , rec: &RecusrsityDepth)->Re<()>{
         for rid in 0..tcapa {
             for column in cols {
                 if column.is_child() {
