@@ -58,7 +58,7 @@ impl DBufTable {
         Ok(())
     }
     pub fn set_table_position_for_columns (&self,tid : Tid,table_postition : Bpos){
-        self.columns.iter().for_each(|col|{
+        self.columns.iter().filter(|c| c.is_child_for_tid(tid)).for_each(|col|{
             col.set_child_table_position_field(table_postition);
         })
     }
