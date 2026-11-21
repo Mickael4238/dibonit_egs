@@ -33,9 +33,7 @@ pub trait DBuffTablesTrait{
             if (table_id == cur_tid){ self.push_rowvalues(rv,d_table,tcapa,&cols).d_err_map(Fe::BuildHeaders,1)?;}
             // Process children recursively
             self.push_child_rec(rv,cur_tid,d_table,tcapa,&cols,&next_rec).d_err_map(Fe::BuildHeaders,1)
-        }else{
-            Ok(()) //End of recursivity
-        }
+        }else{Ok(())}//End of recursivity
     }
     fn push_rowvalues(&self, rv: &mut Vec<u8>,d_table : &Vec<DBufTable>,tcapa : Rcapa, cols :&Vec<DColumn> )->Re<()>{
             for rid in 0..tcapa {

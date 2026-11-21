@@ -13,8 +13,6 @@ pub struct DBuftBuilderTOTO {
     pub tables: Vec<DBufTable>,          // bytes y-y + tables size
     pub raw_values: Vec<u8>,
     max_depth: u8,       // maximum depth of the recursion
-    current_size: usize, // current size of the DBuf being built, at the end of the recursion, this will be the size of the DBuf being built
-    current_depth: u8,   // current depth of the recursion, at the end of the recursion, this will be the depth of the DBuf being built
 }
 impl DBuftBuilderTOTO{
     pub fn new(d_buf_id : Tid, rolling_version : RollingVersion, app_token_v : Option<Vec<u8>>, user_token_v : Option<Vec<u8>>, max_depth: u8 ) -> Re<Self> {
@@ -26,7 +24,7 @@ impl DBuftBuilderTOTO{
             None => {Token::None}
             Some(v) => {Token::App(v)}
         };// maybe we can release Token public so only get a token insted of a vector of bytes
-        Ok(Self {d_buf_id,rolling_version,app_token,user_token,max_depth,tables: vec![], raw_values: vec![], current_size: 0, current_depth: 0 } )
+        Ok(Self {d_buf_id,rolling_version,app_token,user_token,max_depth,tables: vec![], raw_values: vec![] } )
     }
 
     pub fn build_tables(&mut self, table_in: &DTableBox) -> Re<()> {
@@ -83,7 +81,6 @@ impl DBuftBuilderTOTO{
     pub fn set_tables_positions(&mut self ) {
         let mut current_table_pos = 0;
         self.tables.iter().for_each(|table| {
-            let tid = table.table_id;
             self.tables.iter().for_each(|table| {
                 table.set_table_position_for_columns(table.table_id,current_table_pos)
             });
@@ -97,7 +94,7 @@ impl DBuftBuilderTOTO{
         self.tables.iter().try_for_each(|table| {
             let tid = table.table_id;
             table.push_header_rowvalues(&mut raw_values)?;
-            table_in.push_box_value_rec(&mut raw_values,table.table_id,&self.tables,&mut RecusrsityDepth::new(self.max_depth))
+            table_in.push_box_value_rec(&mut raw_values,table.table_id,&self.tables,&RecusrsityDepth::new(self.max_depth))
         })?;
         Ok(())
     }
