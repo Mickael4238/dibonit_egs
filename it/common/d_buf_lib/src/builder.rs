@@ -91,11 +91,14 @@ impl DBuftBuilderTOTO{
     pub fn build_rowvalues(&mut self, table_in : &DTableBox ) -> Re<()> {
         let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
         self.push_header_rowvalues( &mut raw_values);
-        self.tables.iter().try_for_each(|table| {
-            let tid = table.table_id;
-            table.push_header_rowvalues(&mut raw_values)?;
-            table_in.push_box_value_rec(&mut raw_values,table.table_id,&self.tables,&RecusrsityDepth::new(self.max_depth))
+        let mut tables_ids: Vec<Tid>=Vec::with_capacity(self.tables.len());
+        self.tables.iter_mut().try_for_each(|table| {
+            tables_ids.push( table.table_id);
+            table.push_header_rowvalues(&mut raw_values)
         })?;
+        for tid in tables_ids {
+            table_in.push_box_value_rec(&mut raw_values,tid,&mut self.tables,&RecusrsityDepth::new(self.max_depth))?;
+        }
         Ok(())
     }
 
