@@ -34,7 +34,7 @@ impl DBuftBuilderTOTO{
         Ok(())
     }
 
-    pub fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &RecurseDepth) -> Re<()> {
+    fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &RecurseDepth) -> Re<()> {
         if let Some (next_rec) = rec.go_down_rec() {
             // Use instance method (delegates to static internally, no instance data used)
             let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
@@ -78,7 +78,7 @@ impl DBuftBuilderTOTO{
             println!("table_id: {}, row_capacity: {}, columns: {:?}",table.table_id,table.row_capacity,table.columns);
         }
     }
-    pub fn set_tables_positions(&mut self ) {
+    fn set_tables_positions(&mut self ) {
         let mut current_table_pos = 0;
         self.tables.iter().for_each(|table| {
             self.tables.iter().for_each(|table| {
@@ -88,7 +88,7 @@ impl DBuftBuilderTOTO{
         })
     }
 
-    pub fn build_rowvalues(&mut self, table_in : &DTableBox ) -> Re<()> {
+    fn build_rowvalues(&mut self, table_in : &DTableBox ) -> Re<()> {
         //let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
         self.raw_values = Vec::with_capacity(self.calculate_total_size());
 
@@ -101,7 +101,7 @@ impl DBuftBuilderTOTO{
         Ok(())
     }
 
-    pub fn push_header_rowvalues(&mut self) -> (){
+    fn push_header_rowvalues(&mut self) -> (){
         self.raw_values.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
         self.raw_values.extend_from_slice(&self.d_buf_id.to_le_bytes());
         if let Some(t) =  self.app_token.get() {self.raw_values.append(&mut t.clone())}  // todo check clone !!
@@ -299,7 +299,6 @@ mod tests {
         let ub : DTableBox = Box::new(Tables::User(users));
         builder.build_tables(&ub).unwrap();
         builder.print_tables();
-        builder.build_rowvalues(&ub).unwrap();
 
     }
 }
