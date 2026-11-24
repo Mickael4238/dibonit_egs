@@ -13,15 +13,7 @@ pub struct DBuftBuilderTOTO {
     max_depth: u8,       // maximum depth of the recursion
 }
 impl DBuftBuilderTOTO{
-    pub fn new(d_buf_id : Tid, rolling_version : RollingVersion, app_token_v : Option<Vec<u8>>, user_token_v : Option<Vec<u8>>, max_depth: u8 ) -> Re<Self> {
-        let app_token = match app_token_v{
-            None => {Token::None}
-            Some(v) => {Token::App(v)}
-        };
-        let user_token = match user_token_v{
-            None => {Token::None}
-            Some(v) => {Token::App(v)}
-        };// maybe we can release Token public so only get a token insted of a vector of bytes
+    pub fn new(d_buf_id : Tid, rolling_version : RollingVersion, app_token : Token, user_token : Token, max_depth: u8 ) -> Re<Self> {
         Ok(Self {d_buf_id,rolling_version,app_token,user_token,max_depth,tables: vec![], raw_values: vec![] } )
     }
 
@@ -291,7 +283,7 @@ mod tests {
     #[test]
     fn test_build_users(){
         let users = build_users();
-        let mut builder = DBuftBuilderTOTO::new(0,RollingVersion::Current,None,None,4).unwrap();
+        let mut builder = DBuftBuilderTOTO::new(0,RollingVersion::Current,Token::None,Token::None,4).unwrap();
         // Build table structure based on User type
         let ub : DTableBox = Box::new(Tables::User(users));
         builder.build_tables(&ub).unwrap();

@@ -17,22 +17,22 @@ pub struct DBufTOTO {
     pub raw_values: Vec<u8>,
 }
 impl DBufTOTO {
-    pub fn new(structure :DTableBox,d_buf_id : u16, app_token : Option<Vec<u8>>, user_token :Option<Vec<u8>>, max_depth: u8 ) -> Re<Self> {
+    pub fn new(structure :DTableBox,d_buf_id : u16, app_token :Token, user_token :Token, max_depth: u8 ) -> Re<Self> {
         let mut builder = DBuftBuilderTOTO::new(d_buf_id,RollingVersion::Current, app_token, user_token, max_depth).d_err_map(Fe::NewDBuf, 1)?;
         builder.build_tables(&structure).d_err_map(Fe::NewDBuf, 1)?;
         builder.consume().d_err_map(Fe::NewDBuf,3)
     }
     pub fn new_basic(structure : DTableBox,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure, 1, None, None, max_depth).d_err_map(Fe::NewDBuf,1)
+        DBufTOTO::new(structure, 1, Token::None, Token::None, max_depth).d_err_map(Fe::NewDBuf,1)
     }
-    pub fn new_tokens(structure : DTableBox,app_token : Option<Vec<u8>>, user_token :Option<Vec<u8>>,max_depth : u8) -> Re<Self> {
+    pub fn new_tokens(structure : DTableBox,app_token : Token, user_token :Token,max_depth : u8) -> Re<Self> {
         DBufTOTO::new(structure,1, app_token, user_token, max_depth).d_err_map(Fe::NewDBuf,1)
     }
-    pub fn new_user_tokens(structure : DTableBox, user_token : Option<Vec<u8>>,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure,1,None, user_token, max_depth).d_err_map(Fe::NewDBuf,1)
+    pub fn new_user_tokens(structure : DTableBox, user_token :Token,max_depth : u8) -> Re<Self> {
+        DBufTOTO::new(structure,1,Token::None, user_token, max_depth).d_err_map(Fe::NewDBuf,1)
     }
-    pub fn new_app_tokens(structure : DTableBox,app_token : Option<Vec<u8>>,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure,1, app_token, None, max_depth).d_err_map(Fe::NewDBuf,1)
+    pub fn new_app_tokens(structure : DTableBox,app_token :Token,max_depth : u8) -> Re<Self> {
+        DBufTOTO::new(structure,1, app_token, Token::None, max_depth).d_err_map(Fe::NewDBuf,1)
     }
     pub fn from_bytes(bytes: Vec<u8>) -> Re<DBufTOTO> {
         //todo read th child  headers, create a specific function in the builder? in the table?
