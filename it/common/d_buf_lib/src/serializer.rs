@@ -1,3 +1,4 @@
+use crate::*;
 use std::any::Any;
 use d_err_lib::{DErr, DErrMap};
 use crate::{DColumn, Fe, Rc, Re};
@@ -7,26 +8,13 @@ use crate::column::{Cid,Csize};
 use crate::table::{DBufTable, Rcapa, Tid};
 pub type DTableBox = Box<dyn DBuffTablesTrait>;
 
-pub struct RecusrsityDepth{
-    depth: u8,
-    max_depth: u8,
-}
-impl RecusrsityDepth{
-    pub fn new(max_depth: u8) -> Self {
-        Self {depth : 0, max_depth}
-    }
-    pub fn go_down_rec(&self) -> Option<RecusrsityDepth> {
-        if self.depth < self.max_depth {
-            Some(Self {depth : self.depth +1, max_depth: self.max_depth})
-        }else{None}
-    }
-}
+
 pub trait DBuffTablesTrait{
     fn get_children_table(&self, cid: Cid, rid :Rcapa) -> Re<DTableBox>;
     fn get_table_info(&self) -> Re<(Tid, Vec<DColumn>)>;
     fn get_capa(&self) -> Rcapa;
     fn get_val_as_byte_slice(&self, col: &DColumn, rid :Rcapa)-> Re<Vec<u8>>;
-    fn push_box_value_rec(&self, rv : &mut Vec<u8>, cur_tid: Tid, d_table : &mut Vec<DBufTable>, rec: &RecusrsityDepth) -> Re<()> {
+    fn push_box_value_rec(&self, rv : &mut Vec<u8>, cur_tid: Tid, d_table : &mut Vec<DBufTable>, rec: &RecurseDepth) -> Re<()> {
         if let Some(next_rec) = rec.go_down_rec() {
             let (table_id, cols) = self.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
             let tcapa = self.get_capa();
@@ -58,7 +46,7 @@ pub trait DBuffTablesTrait{
         }
         Ok(())
     }
-    fn push_child_rec(&self, rv: &mut Vec<u8>, cur_tid: Tid, d_table : &mut Vec<DBufTable>,tcapa : Rcapa, cols :&Vec<DColumn> , rec: &RecusrsityDepth)->Re<()>{
+    fn push_child_rec(&self, rv: &mut Vec<u8>, cur_tid: Tid, d_table : &mut Vec<DBufTable>,tcapa : Rcapa, cols :&Vec<DColumn> , rec: &RecurseDepth)->Re<()>{
         for rid in 0..tcapa {
             for column in cols {
                 if column.is_child() {

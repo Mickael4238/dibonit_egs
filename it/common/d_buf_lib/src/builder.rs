@@ -2,7 +2,7 @@ use std::cmp;
 use crate::*;
 use crate::buffer::{RollingVersion, Vsize};
 use crate::Rc::TokenTooLarge;
-use crate::serializer::{DTableBox, RecusrsityDepth};
+use crate::serializer::{DTableBox,};
 use crate::table::{Rcapa, Tid};
 
 pub struct DBuftBuilderTOTO {
@@ -28,13 +28,13 @@ impl DBuftBuilderTOTO{
     }
 
     pub fn build_tables(&mut self, table_in: &DTableBox) -> Re<()> {
-        self.build_tables_rec(table_in,&mut RecusrsityDepth::new(self.max_depth)).unwrap();
+        self.build_tables_rec(table_in,&mut RecurseDepth::new(self.max_depth)).unwrap();
         self.set_tables_positions();
         self.build_rowvalues(table_in).unwrap();
         Ok(())
     }
 
-    pub fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &RecusrsityDepth) -> Re<()> {
+    pub fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &RecurseDepth) -> Re<()> {
         if let Some (next_rec) = rec.go_down_rec() {
             // Use instance method (delegates to static internally, no instance data used)
             let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
@@ -94,7 +94,7 @@ impl DBuftBuilderTOTO{
         let tables_ids: Vec<_> = self.tables.iter().enumerate().map(|(i, t)| (t.table_id, i)).collect();
         for (tid,tidx) in tables_ids {
             self.tables[tidx].push_header_rowvalues(&mut raw_values)?;
-            table_in.push_box_value_rec(&mut raw_values,tid,&mut self.tables,&RecusrsityDepth::new(self.max_depth))?;
+            table_in.push_box_value_rec(&mut raw_values,tid,&mut self.tables,&RecurseDepth::new(self.max_depth))?;
         }
         Ok(())
     }
