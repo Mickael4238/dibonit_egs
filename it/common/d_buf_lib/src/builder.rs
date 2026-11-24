@@ -1,7 +1,5 @@
-use std::cmp;
 use crate::*;
-use crate::buffer::{RollingVersion, Vsize};
-use crate::Rc::TokenTooLarge;
+
 use crate::serializer::{DTableBox,};
 use crate::table::{Rcapa, Tid};
 
@@ -126,7 +124,6 @@ impl DBuftBuilderTOTO{
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-    use crate::buffer::RollingVersion;
     use crate::serializer::{ serialize_num, serialize_str, DTableBox};
     use crate::serializer::{ DBuffTablesTrait};
     use crate::table::Tid;
