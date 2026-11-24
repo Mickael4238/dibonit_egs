@@ -89,21 +89,23 @@ impl DBuftBuilderTOTO{
     }
 
     pub fn build_rowvalues(&mut self, table_in : &DTableBox ) -> Re<()> {
-        let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
-        self.push_header_rowvalues( &mut raw_values);
+        //let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
+        self.raw_values = Vec::with_capacity(self.calculate_total_size());
+
+        self.push_header_rowvalues();
         let tables_ids: Vec<_> = self.tables.iter().enumerate().map(|(i, t)| (t.table_id, i)).collect();
         for (tid,tidx) in tables_ids {
-            self.tables[tidx].push_header_rowvalues(&mut raw_values)?;
-            table_in.push_box_value_rec(&mut raw_values,tid,&mut self.tables,&RecurseDepth::new(self.max_depth))?;
+            self.tables[tidx].push_header_rowvalues(&mut self.raw_values)?;
+            table_in.push_box_value_rec(&mut self.raw_values,tid,&mut self.tables,&RecurseDepth::new(self.max_depth))?;
         }
         Ok(())
     }
 
-    pub fn push_header_rowvalues(&self,rv : &mut Vec<u8> ) -> (){
-        rv.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
-        rv.extend_from_slice(&self.d_buf_id.to_le_bytes());
-        if let Some(t) =  self.app_token.get() {rv.append(&mut t.clone())}  // todo check clone !!
-        if let Some(t) =  self.user_token.get() {rv.append(&mut t.clone())}
+    pub fn push_header_rowvalues(&mut self) -> (){
+        self.raw_values.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
+        self.raw_values.extend_from_slice(&self.d_buf_id.to_le_bytes());
+        if let Some(t) =  self.app_token.get() {self.raw_values.append(&mut t.clone())}  // todo check clone !!
+        if let Some(t) =  self.user_token.get() {self.raw_values.append(&mut t.clone())}
         // for now there is no table info in header, we can only reach the first table (who links others)
     }
     fn calculate_total_size(&self) -> Bsize {
