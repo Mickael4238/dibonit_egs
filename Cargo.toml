@@ -16,6 +16,7 @@ members = [
     # COMMON
     "it/common/d_err_lib",           # All common error management library
     "it/common/d_buf_lib",           # All common buffer management library
+    "it/common/d_utils_lib",         # All common small utils libraries
 #    "it/common/d_log_lib",          # All common log management library
 #    "it/dibonit_itt/d_cry_srv",     # Encryption services/library
 

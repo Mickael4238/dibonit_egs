@@ -1,6 +1,6 @@
 use std::cmp;
 use crate::*;
-use crate::buffer::{RollingVersion, Token, Vsize};
+use crate::buffer::{RollingVersion, Vsize};
 use crate::Rc::TokenTooLarge;
 use crate::serializer::{DTableBox, RecusrsityDepth};
 use crate::table::{Rcapa, Tid};

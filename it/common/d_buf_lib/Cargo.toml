@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 d_err_lib = { path = "../d_err_lib" }
+d_utils_lib = { path = "../d_utils_lib" }
 bytemuck = "1.25.2"
