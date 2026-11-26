@@ -1,14 +1,13 @@
 extern crate core;
 
 mod buffer;
-mod builder;
 mod table;
 mod column;
 mod serializer;
 mod buffer_unsafe;
 
 use buffer::{DBufTOTO, Bsize, Rsize};
-use builder::DBuftBuilderTOTO;
+
 use table::DBufTable;
 use column::{DColumn,Cid};
 use d_err_lib::*;
@@ -1199,4 +1198,186 @@ mod tests {
         
         assert!(d1.compare_structure(&d2, true, true, true, true, true).is_err());
     }*/
+    use std::cell::Cell;
+    use d_err_lib::DErr;
+    use d_utils_lib::d_rolling_version::RollingVersion;
+    use d_utils_lib::d_token::Token;
+    use crate::column::{Cid, DColumn};
+    use crate::{Fe, Rc, Re};
+    use crate::buffer::DBufTOTO;
+    use crate::serializer::{serialize_num, serialize_str, DBuffTablesTrait, DTableBox};
+    use crate::table::{Rcapa, Tid};
+
+    enum Tables {
+        User(Vec<User>),City(Vec<City>),Order(Vec<Order>),Product(Vec<Product>),
+    }
+    impl Tables {
+        fn id(&self) ->Tid{
+            match self{
+                Tables::User(_)      => {1}
+                Tables::City(_)      => {2}
+                Tables::Order(_)     => {3}
+                Tables::Product(_)   => {4}
+            }
+        }
+    }
+    impl DBuffTablesTrait for Tables {
+        fn get_table_info  (&self)-> Re<(Tid,Vec<DColumn>)>{
+            Ok((self.id(),
+                match self {
+                    Tables::User(_)    => {vec![
+                        DColumn::U32(1),
+                        DColumn::Char(2,50),
+                        DColumn::Child(3,Tables::Order(vec![]).id(),Cell::new(0)),
+                        DColumn::Child(4,Tables::City(vec![]).id(),Cell::new(0)),
+                    ]}
+                    Tables::City(_)    => {vec![
+                        DColumn::U32(1),
+                        DColumn::Char(2, 50),
+                    ]}
+                    Tables::Order(_)   => {vec![
+                        DColumn::U32(1),
+                        DColumn::UtcTime(2),
+                        DColumn::Child(3,Tables::Product(vec![]).id(),Cell::new(0)),
+                    ]}
+                    Tables::Product(_) => {vec![
+                        DColumn::U32(1),
+                        DColumn::Char(2, 50),
+                        DColumn::F32(3),
+                        DColumn::Child(4,Tables::City(vec![]).id(),Cell::new(0)),
+                    ]}
+                }))
+        }
+        fn get_children_table(&self, cid: Cid,rid : Rcapa) -> Re<DTableBox> {
+            Ok(Box::new(match self {
+                Tables::User(dv)    => {
+                    let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(cid)))?;
+                    match cid {
+                        3 => Tables::Order(user.orders.clone()), //todo clone to remove
+                        4 => Tables::City(user.cities.clone()),
+                        _ => return Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotFound(cid)))
+                    }
+                }
+                Tables::City(_)    => {
+                    return Err(DErr::RootError(Fe::GetChildrenTable,2, Rc::ColumnNotFound(cid)))
+                }
+                Tables::Order(dv)   => {
+                    let order = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(cid)))?;
+                    match cid {
+                        3 => Tables::Product(order.products.clone()),
+                        _ => return Err(DErr::RootError(Fe::GetChildrenTable, 3, Rc::ColumnNotFound(cid)))
+                    }
+                }
+                Tables::Product(dv) => {
+                    let product = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(cid)))?;
+                    match cid {
+                        4 => Tables::City(vec![product.origin_city.clone()]),
+                        _ => return Err(DErr::RootError(Fe::GetChildrenTable, 3, Rc::ColumnNotFound(cid)))
+                    }
+                }
+            }) as DTableBox)
+        }
+        fn get_capa(&self) -> Rcapa{
+            match self{
+                Tables::User(dv )      => {dv.len() as Rcapa}
+                Tables::City(dv)       => {dv.len() as Rcapa}
+                Tables::Order(dv)     => {dv.len() as Rcapa}
+                Tables::Product(dv) => {dv.len() as Rcapa}
+            }
+        }
+
+        fn get_val_as_byte_slice(&self, col: &DColumn,rid : Rcapa)-> Re<Vec<u8>> { //todo("check col or only id to pass")
+            match self { //TODO!("use convert_to_bytes_dynamic everywhere")
+                Tables::User(dv)    => {
+                    let user = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {//to_bytes_v
+                        //    1 => col.convert_to_bytes_dynamic(&user.id).d_err_map(Fe::GetValAsByteSlice,1),
+                        1 => Ok(user.id.to_bytes_v()),
+                        2 => Ok(user.name.to_bytes_v(col)?),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ => Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
+                    }
+                }
+                Tables::City(dv)    => {
+                    let city = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 1, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {
+                        1 => Ok(city.id.to_bytes_v()),
+                        2 => Ok(city.name.to_bytes_v(col)?),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
+                    }
+                }
+                Tables::Order(dv)   => {
+                    let order = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {
+                        1 => Ok(order.id.to_bytes_v()),
+                        2 => Ok(order.date.to_bytes_v()),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
+                    }
+                }
+                Tables::Product(dv) => {
+                    let product = dv.get(rid as usize).ok_or(DErr::RootError(Fe::GetChildrenTable, 3, Rc::InvalidRowIndex(col.id())))?;
+                    match col.id() {
+                        1 => Ok(product.id.to_bytes_v()),
+                        2 => Ok(product.name.to_bytes_v(col)?),//todo huston we have a problem here, the name can be shorter than 50 bytes, we need to handle this case
+                        3 => Ok(product.price.to_bytes_v()),
+                        _ =>  Err(DErr::RootError(Fe::GetChildrenTable, 1, Rc::ColumnNotRow(col.id())))
+                    }
+                }
+            }
+        }
+    }
+    #[derive(Clone)]
+    pub struct Product { id: u32, name: String,price: f32,origin_city : City}
+
+    #[derive(Clone)]
+    struct Order { id: u32, date: u64, products: Vec<Product> }
+    #[derive(Clone)]
+    struct City { id: u32, name: String }
+    #[derive(Clone)]
+    struct User { id: u32, name: String, orders: Vec<Order> ,cities: Vec<City>}
+    fn build_users()-> Vec<User> {
+        let mut alex_order1_products = Vec::with_capacity(2);
+        alex_order1_products.push(Product{id: 0,name: "shoes".to_string(), price: 100.0,origin_city : City{id: 6,name : "tokio".to_string()}});
+        alex_order1_products.push(Product{id: 1,name: "laptop".to_string(),price: 999.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+        alex_order1_products.push(Product{id: 2,name: "toto".to_string(),price: 999.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+
+        let mut alex_order2_products= Vec::with_capacity(2);
+        alex_order2_products.push(Product{id: 0,name: "shoes".to_string(), price: 100.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+        alex_order2_products.push(Product{id: 2,name: "bike".to_string(),price: 1230.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+
+        let mut alex_orders= Vec::with_capacity(2);
+        alex_orders.push(Order{id: 1,date: 2022,products:alex_order1_products,});
+        alex_orders.push(Order{id: 2,date: 2023,products:alex_order2_products,});
+
+        let mut alex_city = Vec::with_capacity(1);
+        alex_city.push(City{id: 1,name : "Grenoble".to_string()});
+
+        let mut fany_order1_products = Vec::with_capacity(2);
+        fany_order1_products.push(Product{id: 3,name: "harness".to_string(), price: 53.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+        fany_order1_products.push(Product{id: 4,name: "rope".to_string(),price: 125.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+
+        let mut fany_order2_products = Vec::with_capacity(2);
+        fany_order2_products.push(Product{id: 5,name: "carabiner".to_string(), price: 15.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+        fany_order2_products.push(Product{id: 1,name: "laptop".to_string(),price: 999.0,origin_city : City{id: 1,name : "Grenoble".to_string()}});
+
+        let mut fany_orders = Vec::with_capacity(2);
+        fany_orders.push(Order{id: 1,date: 2021,products:fany_order1_products,});
+        fany_orders.push(Order{id: 1,date: 2024,products:fany_order2_products,});
+
+        let mut fany_city = Vec::with_capacity(1);
+        fany_city.push(City{id: 1,name : "Praha".to_string()});
+
+        let mut ret = Vec::with_capacity(2);
+        ret.push(User{ id: 0,name: "alex".to_string(),orders: alex_orders,cities: alex_city,});
+        ret.push(User{ id: 0,name: "fany".to_string(),orders: fany_orders,cities: fany_city,});
+
+        ret
+    }
+    #[test]
+    fn test_build_users(){
+        let users = build_users();
+        let ub : DTableBox = Box::new(Tables::User(users));
+        let mut buffer = DBufTOTO::new(ub,0,RollingVersion::Current,Token::None,Token::None,4).unwrap();
+        buffer.print_tables();
+
+    }
 }

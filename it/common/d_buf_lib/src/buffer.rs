@@ -17,22 +17,13 @@ pub struct DBufTOTO {
     pub raw_values: Vec<u8>,
 }
 impl DBufTOTO {
-    pub fn new(structure :DTableBox,d_buf_id : u16, app_token :Token, user_token :Token, max_depth: u8 ) -> Re<Self> {
-        let mut builder = DBuftBuilderTOTO::new(d_buf_id,RollingVersion::Current, app_token, user_token, max_depth).d_err_map(Fe::NewDBuf, 1)?;
-        builder.build_tables(&structure).d_err_map(Fe::NewDBuf, 1)?;
-        builder.consume().d_err_map(Fe::NewDBuf,3)
+    pub fn new(structure :DTableBox,d_buf_id : u16, rolling_version : RollingVersion, app_token :Token, user_token :Token, max_depth: u8 ) -> Re<Self> {
+        let mut myself =  DBufTOTO{d_buf_id,rolling_version,app_token,user_token,tables: vec![], raw_values: vec![] };
+        myself.build_tables(&structure,max_depth).d_err_map(Fe::NewDBuf,1)?;
+        Ok(myself)
     }
     pub fn new_basic(structure : DTableBox,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure, 1, Token::None, Token::None, max_depth).d_err_map(Fe::NewDBuf,1)
-    }
-    pub fn new_tokens(structure : DTableBox,app_token : Token, user_token :Token,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure,1, app_token, user_token, max_depth).d_err_map(Fe::NewDBuf,1)
-    }
-    pub fn new_user_tokens(structure : DTableBox, user_token :Token,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure,1,Token::None, user_token, max_depth).d_err_map(Fe::NewDBuf,1)
-    }
-    pub fn new_app_tokens(structure : DTableBox,app_token :Token,max_depth : u8) -> Re<Self> {
-        DBufTOTO::new(structure,1, app_token, Token::None, max_depth).d_err_map(Fe::NewDBuf,1)
+        DBufTOTO::new(structure, 1,RollingVersion::Current, Token::None, Token::None, max_depth).d_err_map(Fe::NewDBuf,1)
     }
     pub fn from_bytes(bytes: Vec<u8>) -> Re<DBufTOTO> {
         //todo read th child  headers, create a specific function in the builder? in the table?
@@ -44,5 +35,97 @@ impl DBufTOTO {
         if actual_data_size < expected_data_size { return Err(DErr::RootError(Fe::FromBytesDBuf, 2, Rc::BufferTooSmall)); }
         let  rolling_version = RollingVersion::Current; //todo!()
         Ok(DBufTOTO { d_buf_id: 0, rolling_version ,app_token:Token::None, user_token: Token::None, tables,  raw_values: bytes })
+    }
+    pub fn build_tables(&mut self, table_in: &DTableBox,max_depth :u8) -> Re<()> {
+        self.build_tables_rec(table_in,&mut RecurseDepth::new(max_depth)).unwrap();
+        self.set_tables_positions();
+        self.build_rowvalues(table_in,max_depth).unwrap();
+        Ok(())
+    }
+
+    fn build_tables_rec(&mut self, table_in: &DTableBox, rec: &RecurseDepth) -> Re<()> {
+        if let Some (next_rec) = rec.go_down_rec() {
+            // Use instance method (delegates to static internally, no instance data used)
+            let (table_id, columns) = table_in.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
+            let capa = table_in.get_capa();
+            let table: DBufTable = DBufTable::new(table_id, columns,capa,false)?;
+            // Collect child column IDs before pushing the table
+            let child_column_ids: Vec<_> = table.columns.iter()
+                .filter(|c| c.is_child())
+                .map(|c| c.id())
+                .collect();
+            self.push_table(table).d_err_map(Fe::BuildTable,1)?;
+            // Process children recursively
+            for cid in child_column_ids {
+                for rid in 0..capa {
+                    let child_table = table_in.get_children_table(cid,rid).d_err_map(Fe::BuildHeaders,1)?;
+                    self.build_tables_rec(&child_table,&next_rec).d_err_map(Fe::BuildTable,1)?;
+                }
+            }
+            Ok(())
+        }else{
+            Ok(()) //End of recursivity
+        }
+    }
+    fn push_table(&mut self, table: DBufTable)-> Re<()>  {
+        match self.tables.iter_mut().find(|t| t.table_id == table.table_id) {
+            Some(t) => {
+                if t.row_capacity <=  Rcapa::MAX - table.row_capacity  {
+                    t.row_capacity += table.row_capacity;
+                    Ok(())
+                }else{Err(DErr::RootError(Fe::PushTable,1,Rc::CapacityExceeded))}
+            },
+            None => {
+                self.tables.push(table);
+                Ok(())
+            }
+        } // note to the future: if a table is full (a page from the table), we could push a new table to the buffer here...
+    }
+    #[cfg(test)]
+    pub fn print_tables(&self){
+        for table in &self.tables{
+            println!("table_id: {}, row_capacity: {}, columns: {:?}",table.table_id,table.row_capacity,table.columns);
+        }
+    }
+    fn set_tables_positions(&mut self ) {
+        let mut current_table_pos = 0;
+        self.tables.iter().for_each(|table| {
+            self.tables.iter().for_each(|table| {
+                table.set_table_position_for_columns(table.table_id,current_table_pos)
+            });
+            current_table_pos = current_table_pos + table.calculate_size();
+        })
+    }
+
+    fn build_rowvalues(&mut self, table_in : &DTableBox ,max_depth : u8) -> Re<()> {
+        //let mut raw_values: Vec<u8> = Vec::with_capacity(self.calculate_total_size()); //todo the calculation could be done at build tables?
+        self.raw_values = Vec::with_capacity(self.calculate_total_size());
+
+        self.push_header_rowvalues();
+        let tables_ids: Vec<_> = self.tables.iter().enumerate().map(|(i, t)| (t.table_id, i)).collect();
+        for (tid,tidx) in tables_ids {
+            self.tables[tidx].push_header_rowvalues(&mut self.raw_values)?;
+            table_in.push_box_value_rec(&mut self.raw_values,tid,&mut self.tables,&RecurseDepth::new(max_depth))?;
+        }
+        Ok(())
+    }
+
+    fn push_header_rowvalues(&mut self) -> (){
+        self.raw_values.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
+        self.raw_values.extend_from_slice(&self.d_buf_id.to_le_bytes());
+        if let Some(t) =  self.app_token.get() {self.raw_values.append(&mut t.clone())}  // todo check clone !!
+        if let Some(t) =  self.user_token.get() {self.raw_values.append(&mut t.clone())}
+        // for now there is no table info in header, we can only reach the first table (who links others)
+    }
+    fn calculate_total_size(&self) -> Bsize {
+        self.tables.iter().map(|v| v.calculate_size()).sum::<Bsize>()
+            + self.calculate_header_size()
+    }
+    fn calculate_header_size(&self) -> Bsize {
+        let rol_vers_tocken_info_size: Bsize = 1 ;
+        let d_buf_id_size: Bsize = 2;
+        let tokens_size =( self.app_token.size_of()  +  self.user_token.size_of() )as Bsize;
+        let nb_table_size: Bsize = size_of::<Tcapa>();
+        rol_vers_tocken_info_size + d_buf_id_size + tokens_size + nb_table_size
     }
 }

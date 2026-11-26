@@ -3,7 +3,6 @@ use std::any::Any;
 use d_err_lib::{DErr, DErrMap};
 use crate::{DColumn, Fe, Rc, Re};
 use crate::buffer::Bsize;
-use crate::builder::DBuftBuilderTOTO;
 use crate::column::{Cid,Csize};
 use crate::table::{DBufTable, Rcapa, Tid};
 pub type DTableBox = Box<dyn DBuffTablesTrait>;
