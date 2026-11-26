@@ -12,7 +12,7 @@ pub type Rsize = u16;           // size of 1 row (bytes)
 
 pub type Tid = u16;              // type for table ids
 #[derive(Clone, Debug)]
-pub struct DBufTable {
+pub struct DBufTable{
     pub table_id: Tid,          // id of the table
     pub columns: Vec<DColumn>,  // all columns of the table
     pub row_count:    Rcapa,    // number of 'active' rows in the table
@@ -20,7 +20,16 @@ pub struct DBufTable {
     pub row_size: Rsize,        // size of 1 row (bytes)
     pub has_index: bool,        // true if the table is indexed
 }
-
+impl fmt::Display for DBufTable {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "\tTABLE(id = {}, capa = {}, count = {} , size = {} )\r\n", self.table_id,self.row_capacity,self.row_count,self.row_size );
+            for col in &self.columns {
+                write!(f, "\t\t+ {}", col)?;
+            }
+            //todo("adding the row values" with a slice pointing to the row values in the buffer)
+            Ok(())
+        }
+}
 impl DBufTable {
     pub fn new(table_id: Tid, columns: Vec<DColumn>, row_capacity: Rcapa, has_index: bool) -> Re<Self> {
         if table_id == 0 { return Err(DErr::RootError(Fe::NewDBufHeader,1,Rc::InvalidDBufId)); }

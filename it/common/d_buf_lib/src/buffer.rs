@@ -81,12 +81,6 @@ impl DBufTOTO {
             }
         } // note to the future: if a table is full (a page from the table), we could push a new table to the buffer here...
     }
-    #[cfg(test)]
-    pub fn print_tables(&self){
-        for table in &self.tables{
-            println!("table_id: {}, row_capacity: {}, columns: {:?}",table.table_id,table.row_capacity,table.columns);
-        }
-    }
     fn set_tables_positions(&mut self ) {
         let mut current_table_pos = 0;
         self.tables.iter().for_each(|table| {
@@ -127,5 +121,17 @@ impl DBufTOTO {
         let tokens_size =( self.app_token.size_of()  +  self.user_token.size_of() )as Bsize;
         let nb_table_size: Bsize = size_of::<Tcapa>();
         rol_vers_tocken_info_size + d_buf_id_size + tokens_size + nb_table_size
+    }
+}
+#[cfg(test)]
+impl fmt::Display for DBufTOTO {
+    #[cfg(test)]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BUFFER (id = {}, rolling version = {:?}, user token = {:?} , app token = {:?} )", self.d_buf_id,self.rolling_version,self.user_token,self.app_token );
+        for t in &self.tables {
+            write!(f, "\r\n+ {}", t)?;
+        }
+        //todo("adding the row values" with a slice pointing to the row values in the buffer)
+        Ok(())
     }
 }

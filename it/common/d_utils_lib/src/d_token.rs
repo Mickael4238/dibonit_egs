@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Token {
     App(Vec<u8>),
     User(Vec<u8>),

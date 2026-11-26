@@ -1,4 +1,4 @@
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum RollingVersion {    // when receive :
     PreviousDeprecated = 3,  //  -> Raise an Error, the other app is too old, but we manage the case and send buffers with the PreviousDeprecated buffer version
     PreviousToDeploy   = 0,  //  -> Raise a warning, our app is newly deployed (but not the other), we manage the case and send PreviousToDeploy buffer version

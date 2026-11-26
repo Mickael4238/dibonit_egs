@@ -1377,7 +1377,8 @@ mod tests {
         let users = build_users();
         let ub : DTableBox = Box::new(Tables::User(users));
         let mut buffer = DBufTOTO::new(ub,0,RollingVersion::Current,Token::None,Token::None,4).unwrap();
-        buffer.print_tables();
+        println!("{}",buffer);
+
 
     }
 }

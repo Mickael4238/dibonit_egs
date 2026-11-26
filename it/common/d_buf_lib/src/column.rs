@@ -1,10 +1,11 @@
 use std::any::Any;
 use std::cell::Cell;
+use std::fmt;
 use d_err_lib::{DErr, DErrMap};
 use crate::{Fe, Rc, Re,Bsize};
 use crate::buffer::Bpos;
 use crate::serializer::{serialize_num,serialize_str};
-use crate::table::Tid;
+use crate::table::{DBufTable, Tid};
 
 const COL_ID_HIGH_MASK: u8 = 0x07;
 const COL_TYPE_SHIFT :u8 = 3;
@@ -15,6 +16,11 @@ type Ctype = u8;    // type of column type (note: only 5 bits)
 #[derive(Debug, Clone, PartialEq)]
 pub enum DColumn {
     Boolean(Cid), U8(Cid), U16(Cid), U32(Cid), U64(Cid), I8(Cid), I16(Cid), I32(Cid), I64(Cid), F32(Cid), F64(Cid), UtcTime(Cid), Char(Cid, Csize), Ascii(Cid, Csize),String(Cid, Csize), Child(Cid,Tid,Cell<Bpos> ),
+}
+impl fmt::Display for DColumn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self )
+    }
 }
 impl DColumn {
     pub fn type_id(&self) -> Ctype {
