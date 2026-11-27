@@ -97,15 +97,20 @@ impl DBufTOTO {
 
         self.push_header_rowvalues();
         let tables_ids: Vec<_> = self.tables.iter().enumerate().map(|(i, t)| (t.table_id, i)).collect();
+        let mut rec = &mut RecurseDepth::new(max_depth);
         for (tid,tidx) in tables_ids {
+            println!("BUFFER PUSH TABLE {}.{}",tidx,tid);
             self.tables[tidx].push_header_rowvalues(&mut self.raw_values)?;
-            table_in.push_box_value_rec(&mut self.raw_values,tid,&mut self.tables,&RecurseDepth::new(max_depth))?;
+            table_in.push_box_value_rec(&mut self.raw_values,tid,tidx,&mut self.tables,rec.iter_on_same())?;
         }
         Ok(())
     }
 
     fn push_header_rowvalues(&mut self) -> (){
+        println!("{}\t{}\t{}\t{}pushing header - Rv - hasToken ",self.raw_values.len(),1,self.raw_values.capacity(),self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
         self.raw_values.push(self.rolling_version as u8 | self.app_token.has_token_as_row()| self.user_token.has_token_as_row());
+
+        println!("{}\t{}\t{}\t{}pushing header - ID ",self.raw_values.len(),2,self.raw_values.capacity(),&self.d_buf_id);
         self.raw_values.extend_from_slice(&self.d_buf_id.to_le_bytes());
         if let Some(t) =  self.app_token.get() {self.raw_values.append(&mut t.clone())}  // todo check clone !!
         if let Some(t) =  self.user_token.get() {self.raw_values.append(&mut t.clone())}
@@ -115,7 +120,7 @@ impl DBufTOTO {
         self.tables.iter().map(|v| v.calculate_size()).sum::<Bsize>()
             + self.calculate_header_size()
     }
-    fn calculate_header_size(&self) -> Bsize {
+    pub(crate) fn calculate_header_size(&self) -> Bsize {
         let rol_vers_tocken_info_size: Bsize = 1 ;
         let d_buf_id_size: Bsize = 2;
         let tokens_size =( self.app_token.size_of()  +  self.user_token.size_of() )as Bsize;
@@ -127,11 +132,23 @@ impl DBufTOTO {
 impl fmt::Display for DBufTOTO {
     #[cfg(test)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "BUFFER (id = {}, rolling version = {:?}, user token = {:?} , app token = {:?} )", self.d_buf_id,self.rolling_version,self.user_token,self.app_token );
+        write!(f, "BUFFER (id = {},capa = {}, count = {}, rolling version = {:?}, user token = {:?} , app token = {:?} )", self.d_buf_id,self.raw_values.capacity(),self.raw_values.len(), self.rolling_version, self.user_token, self.app_token);
+        let mut start_index = self.calculate_header_size();
         for t in &self.tables {
             write!(f, "\r\n+ {}", t)?;
+            if f.alternate() { // pretty-print mode on {:#}
+                start_index = start_index + t.calculate_header_size();
+                write!(f, "- startIndex = {} ", start_index)?;
+                for r in 0..t.row_count{
+                    write!(f, "\r\n\t{}", r)?;
+                    for c in t.columns.iter() {
+                        let end_index = start_index + c.size_of()as usize;
+                        write!(f, "\t{:?}",c.to_string(&self.raw_values[start_index..end_index]))?;
+                        start_index = end_index;
+                    }
+                }
+            }
         }
-        //todo("adding the row values" with a slice pointing to the row values in the buffer)
         Ok(())
     }
 }

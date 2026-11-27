@@ -17,9 +17,10 @@ pub trait DBuffTablesTrait{
         if let Some(next_rec) = rec.go_down_rec() {
             let (table_id, cols) = self.get_table_info().d_err_map(Fe::BuildHeaders,1)?;
             let tcapa = self.get_capa();
+            if rec.is_first_call() {d_table[cur_tidx].increment_row_count(tcapa);}
             if (table_id == cur_tid){ self.push_rowvalues(rv,d_table,tcapa,&cols).d_err_map(Fe::BuildHeaders,1)?;}
-            // Process children recursively
             self.push_child_rec(rv,cur_tid,d_table,tcapa,&cols,&next_rec).d_err_map(Fe::BuildHeaders,1)
+            // Process children recursively even if the table is not the current one... because a child of a child could be the current table!
         }else{Ok(())}//End of recursivity
     }
     fn push_rowvalues(&self, rv: &mut Vec<u8>, d_table: &mut Vec<DBufTable>, tcapa : Rcapa, cols :&Vec<DColumn> ) ->Re<()>{
@@ -27,6 +28,7 @@ pub trait DBuffTablesTrait{
             for column in cols {
                 if let Some(col_tid) = column.is_child_get_table_id() {
                     if let Some(col_table) = d_table.iter_mut().filter(|t|t.table_id == col_tid).last(){
+                        //Getting the DTable of the child to get and increment its row count
                         let child_offset_in_table = col_table.row_count;
                         //todo:there should be a faster way to do this
                         let number_of_row_for_child = self.get_children_table(column.id(), rid).unwrap().get_capa();

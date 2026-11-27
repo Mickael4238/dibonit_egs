@@ -1285,7 +1285,6 @@ mod tests {
                 Tables::Product(dv) => {dv.len() as Rcapa}
             }
         }
-
         fn get_val_as_byte_slice(&self, col: &DColumn,rid : Rcapa)-> Re<Vec<u8>> { //todo("check col or only id to pass")
             match self { //TODO!("use convert_to_bytes_dynamic everywhere")
                 Tables::User(dv)    => {

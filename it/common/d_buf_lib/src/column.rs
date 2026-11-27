@@ -100,6 +100,36 @@ impl DColumn {
             DColumn::Child  (id,_,_) => *id,
     }}
 
+    pub fn to_string(&self,row : &[u8]) -> Re<String> {
+        if row.len() != self.size_of() as usize{
+            Err(DErr::RootError(Fe::ConvertToBytesDynamic, 1, Rc::ColumnValueNotU8(self.id())))
+        }else {
+            Ok(match &self {
+                DColumn::Boolean(_) =>  (row[0] != 0).to_string(),
+                DColumn::U8(_) => row[0].to_string(),
+                DColumn::U16(_) => u16::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::U32(_) => u32::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::U64(_) => u64::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::I8(_) => i8::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::I16(_) => i16::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::I32(_) => i32::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::I64(_) => i64::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::F32(_) => f32::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::F64(_) => f64::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::UtcTime(_) => i64::from_le_bytes(row.try_into().unwrap()).to_string(),
+                DColumn::Char(_, _) | DColumn::Ascii(_, _) | DColumn::String(_, _) => {
+                    String::from_utf8_lossy(row).trim_end_matches('\0').to_string()
+                }
+                DColumn::Child  (_,tid,_) => {
+                    let offset = u32::from_le_bytes(row[0..4].try_into().unwrap());
+                    let count = u32::from_le_bytes(row[4..8].try_into().unwrap());
+                    format!("child(table_id: {}, offset: {}, count: {})", tid, offset, count)
+                }
+            })
+        }
+    }
+
+
     pub fn push_header_rowvalues(&self, rv: &mut Vec<u8>) -> Re<()>{
         let b1 = self.type_id() << COL_TYPE_SHIFT | (self.id() >> 8) as u8;
         rv.push(b1);
